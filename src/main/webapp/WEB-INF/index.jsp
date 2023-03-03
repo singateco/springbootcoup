@@ -11,7 +11,7 @@ pageEncoding="UTF-8"%>
 
 <body>
 <div id="like-button-root"></div>
-
+<a href="board/main">게시판</a>
 <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
