@@ -1,0 +1,14 @@
+
+
+
+
+spring:
+  mvc:
+    # JSP 설정
+    view:
+      prefix: /WEB-INF/
+      suffix: .jsp
+  
+  # 타임리프 비활성화
+  thymeleaf:
+    enabled: false
