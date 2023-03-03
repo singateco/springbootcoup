@@ -12,3 +12,12 @@ spring:
   # 타임리프 비활성화
   thymeleaf:
     enabled: false
+  
+  # DB설정
+  datasource:
+    url: jdbc:h2:mem:mydb
+    username: sa
+    password: password
+  
+  jpa:
+    spring.jpa.database-platform: org.hibernate.dialect.H2Dialect
