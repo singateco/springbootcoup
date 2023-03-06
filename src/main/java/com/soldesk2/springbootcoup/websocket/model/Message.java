@@ -4,8 +4,6 @@ import lombok.Data;
 
 @Data
 public class Message {
-    private String senderName;
-    private String receiverName;
-    private String messageBody;
-    private Status status;
+    private String name;
+    private String text;
 }
