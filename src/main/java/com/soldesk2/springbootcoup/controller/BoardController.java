@@ -32,7 +32,7 @@ public class BoardController {
 		Board boardData = boardService.get_Board(idx);
 
 		if (boardData == null) {
-			return ResponseEntity.notFound().build();
+			return ResponseEntity.noContent().build();
 		}
 
 		boardData.setReadCount(boardData.getReadCount() + 1);
