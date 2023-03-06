@@ -1,15 +1,34 @@
 package com.soldesk2.springbootcoup.entity;
 
+import java.util.Date;
+
+import org.springframework.data.annotation.Id;
+
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import lombok.Data;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
-@Data
+@Getter
+@Setter
 public class Board {
 
-	private Long Board_idx; 		// 게시판 인덱스
-	private String Board_title; 	// 게시 글 제목
-	private String Board_content; 	// 게시 글 내용
-	private String Board_writer;	// 게시 글 작성자
-	private String Board_date; 		// 게시 글 작성잉자
+		@Id //pk
+		@GeneratedValue(strategy = GenerationType.IDENTITY)
+		private Long idx; //자동증가
+	   
+		private String title;
+		private String content;
+	   
+		@Column(updatable = false)
+		private String writer;
+	   
+		@Column(insertable = false, updatable = false, columnDefinition = "datetime default now()")
+		private Date dat; //now()
+	   
+		@Column(insertable = false, updatable = false, columnDefinition = "int default 0")
+		private Long count;
 }
