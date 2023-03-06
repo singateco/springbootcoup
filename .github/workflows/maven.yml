@@ -39,9 +39,6 @@ jobs:
         path: ~/.m2
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
-        
-    - name: Checkout
-      uses: actions/checkout@v3.3.0
           
     - name: Commit
       uses: stefanzweifel/git-auto-commit-action@v4
