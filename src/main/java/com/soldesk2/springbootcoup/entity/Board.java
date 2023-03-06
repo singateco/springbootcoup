@@ -2,24 +2,20 @@ package com.soldesk2.springbootcoup.entity;
 
 import java.util.Date;
 
-
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 @Entity
-@Getter
-@Setter
+@Data
 public class Board {
 
 		@Id //pk
 		@GeneratedValue(strategy = GenerationType.IDENTITY)
-		private Long idx; //자동증가
+		private Long index; //자동증가
 	   
 		private String title;
 		private String content;
@@ -28,8 +24,8 @@ public class Board {
 		private String writer;
 	   
 		@Column(insertable = false, updatable = false, columnDefinition = "datetime default now()")
-		private Date dat; //now()
+		private Date date; //now()
 	   
 		@Column(insertable = false, updatable = false, columnDefinition = "int default 0")
-		private Long count;
+		private Long readCount;
 }
