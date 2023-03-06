@@ -30,6 +30,11 @@ public class BoardController {
 	@GetMapping("/board/{idx}")
 	public ResponseEntity<Board> Find_Board(@PathVariable("idx") Long idx) { // GET / idx로 게시글 검색
 		Board boardData = boardService.get_Board(idx);
+
+		if (boardData == null) {
+			return ResponseEntity.notFound().build();
+		}
+
 		boardData.setReadCount(boardData.getReadCount() + 1);
 		boardService.update_Board(boardData);
 		return ResponseEntity.ok(boardData);
