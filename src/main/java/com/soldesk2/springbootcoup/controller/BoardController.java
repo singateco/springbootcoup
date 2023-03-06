@@ -15,6 +15,8 @@ import com.google.gson.Gson;
 import com.soldesk2.springbootcoup.entity.Board;
 import com.soldesk2.springbootcoup.service.BoardService;
 
+import io.micrometer.core.ipc.http.HttpSender.Response;
+
 @RestController
 public class BoardController {
 
@@ -31,8 +33,12 @@ public class BoardController {
 	@RequestMapping(value = "/board/{idx}", method = RequestMethod.GET)
 	public ResponseEntity<String> Find_Board(@PathVariable("idx") Long idx) { // GET / idx로 게시글 검색
 		Board board = boardService.get_Board(idx);
+		if (board == null) {
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).body("none");
+		}
+
 		String jsonString = new Gson().toJson(board);
-		return ResponseEntity.status(HttpStatus.NO_CONTENT).body(jsonString);
+		return ResponseEntity.status(HttpStatus.OK).body(jsonString);
 	}
 	
 	@RequestMapping(value = "/board", method = RequestMethod.POST)

@@ -25,7 +25,11 @@ public class BoardSerivceimpl implements BoardService{
 	@Override
 	public Board get_Board(Long idx) {
 		Optional<Board> vo = boardRepository.findById(idx);
-		return vo.get();
+		if (vo.isPresent()) {
+			return vo.get();
+		} else {
+			return null;		
+		}
 	}
 	
 	@Override
