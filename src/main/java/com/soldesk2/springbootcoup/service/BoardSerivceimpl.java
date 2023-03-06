@@ -29,13 +29,15 @@ public class BoardSerivceimpl implements BoardService{
 	}
 	
 	@Override
-	public void add_Board(Board board) {
-		boardRepository.save(board);
+	public Board add_Board(Board board) {
+		Board add_board = boardRepository.save(board);
+		return add_board;
 	}
 	
 	@Override
-	public void update_Board(Board board) {
-		boardRepository.save(board);
+	public Board update_Board(Board board) {
+		Board update_board = boardRepository.save(board);
+		return update_board;
 	}
 	
 	@Override
