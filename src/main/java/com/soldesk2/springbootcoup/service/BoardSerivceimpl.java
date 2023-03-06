@@ -28,7 +28,7 @@ public class BoardSerivceimpl implements BoardService{
 		if (vo.isPresent()) {
 			return vo.get();
 		} else {
-			return null;		
+			return null;
 		}
 	}
 	
