@@ -28,7 +28,7 @@ public class BoardSerivceimpl implements BoardService{
 		if (vo.isPresent()) {
 			return vo.get();
 		} else {
-			return null;		
+			return null;
 		}
 	}
 	
@@ -41,7 +41,13 @@ public class BoardSerivceimpl implements BoardService{
 	@Override
 	public Board update_Board(Board board) {
 		Board update_board = boardRepository.save(board);
-		return update_board;
+		Optional<Board> vo = Optional.ofNullable(update_board);
+		if(vo.isPresent()) {
+			return vo.get();
+		}
+		else {
+			return null;
+		}
 	}
 	
 	@Override

@@ -56,6 +56,6 @@ public class BoardController {
 	@RequestMapping(value = "/board/{idx}", method = RequestMethod.DELETE)
 	public ResponseEntity<Board> Delete_Board(@PathVariable("idx") Long idx) { // DELETE / 게시글 삭제
 		boardService.delete_Board(idx);
-		return ResponseEntity.status(HttpStatus.NO_CONTENT).body(null);
+		return ResponseEntity.status(HttpStatus.OK).body(null);
 	}
 }
