@@ -40,12 +40,22 @@ public class BoardSerivceimpl implements BoardService{
 	
 	@Override
 	public Board update_Board(Board board) {
-		Board update_board = boardRepository.save(board);
-		return update_board;
+		if (!boardRepository.existsById(board.getIndex())) {
+			return null;
+		}
+
+		return boardRepository.save(board);
 	}
 	
 	@Override
-	public void delete_Board(Long idx) {
+	public boolean delete_Board(Long idx) {
+		if (!boardRepository.existsById(idx)) {
+			return false;
+		}
+		
 		boardRepository.deleteById(idx);
+		return true;
+		
 	}
+
 }

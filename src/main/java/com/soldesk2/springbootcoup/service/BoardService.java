@@ -8,5 +8,5 @@ public interface BoardService {
 	public Board get_Board(Long idx); 					// 하나 검색
 	public Board add_Board(Board board); 				// 글 추가
 	public Board update_Board(Board board);				// 글 수정
-	public void delete_Board(Long idx); 				// 글 삭제
+	public boolean delete_Board(Long idx); 				// 글 삭제
 }

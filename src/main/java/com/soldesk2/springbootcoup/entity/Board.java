@@ -26,6 +26,6 @@ public class Board {
 		@Column(insertable = false, updatable = false, columnDefinition = "datetime default now()")
 		private Date date; //now()
 	   
-		@Column(insertable = false, updatable = false, columnDefinition = "int default 0")
+		@Column(insertable = false, columnDefinition = "int default 0")
 		private Long readCount;
 }
