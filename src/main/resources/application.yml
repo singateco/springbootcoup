@@ -3,3 +3,8 @@ spring:
     user:
       name: user
       password: testpw
+  
+  devtools:
+    restart:
+      # 로깅시 재시작 방지
+      exclude: logs/**
