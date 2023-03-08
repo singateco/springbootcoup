@@ -33,13 +33,15 @@ public abstract class Game {
                 deck.add(card);
             }
         }
-        
+
         shuffleDeck();
 
         // 플레이어 설정
         for (int i = 0; i < numberOfPlayers; i++) {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
         }
+    
+    
     }
 
     public void play() {

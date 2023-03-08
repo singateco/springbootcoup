@@ -8,3 +8,12 @@ spring:
     restart:
       # 로깅시 재시작 방지
       exclude: logs/**
+  
+logging:
+  level:
+    org:
+      springframework:
+        web:
+          socket:
+            config:
+              WebSocketMessageBrokerStats: TRACE
