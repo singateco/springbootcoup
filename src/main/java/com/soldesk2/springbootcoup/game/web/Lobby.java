@@ -13,7 +13,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Lobby {
-    static final int MIN_PLAYER = 2;
+    static final int MIN_PLAYER = 1;
     static final int MAX_PLAYER = 6;
 
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());

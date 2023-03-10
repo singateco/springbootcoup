@@ -11,15 +11,13 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.soldesk2.springbootcoup.game.Action;
 import com.soldesk2.springbootcoup.game.Card;
 import com.soldesk2.springbootcoup.game.Player;
+import com.soldesk2.springbootcoup.game.Action.ActionType;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 
 
 public class WebGame {
-    public static final int MIN_PLAYER = 2;
-    public static final int MAX_PLAYER = 6;
-
     private final Random random;
     private StringBuilder stringBuilder;
 
@@ -41,10 +39,6 @@ public class WebGame {
         this.destination = destination;
 
         int numberOfPlayers = playerNames.length;
-
-        if (numberOfPlayers < MIN_PLAYER || numberOfPlayers > MAX_PLAYER) {
-            throw new IllegalArgumentException("맞지 않는 수의 플레이어입니다.");
-        }
 
         this.players = new Player[numberOfPlayers];
         
@@ -80,7 +74,9 @@ public class WebGame {
 
         for (int i = 0; i <this.players.length; i++) {
             String user = players[i].getName();
-            String msg = "Your Deck: " + players[i].getCards();
+            String msg = "Your Coin: " + players[i].getCoins() + "\n" +
+                         "Your Deck: " + players[i].getCards() + "\n" +
+                         "Actions: " + getAction(players[i]);
             logger.info("Sending {} to {}", msg, user);
             simpMessagingTemplate.convertAndSendToUser(user, destination, msg);
         }
@@ -115,6 +111,8 @@ public class WebGame {
 
         for (int i = 0; i < players.length; i++) {
             stringBuilder.append("플레이어 " + i + ": ");
+            stringBuilder.append(players[i].getName());
+            stringBuilder.append(" ");
             stringBuilder.append("카드 ");
             stringBuilder.append(players[i].getCardNumbers());
             stringBuilder.append("개, ");
@@ -132,10 +130,38 @@ public class WebGame {
      * 사용 가능한 액션을 반환한다.
      * @param player 액션을 하는 플레이어.
      */
-    Action[] getAction(Player player) {
-        // TODO
-        return new Action[]{};
+    ArrayList<Action> getAction(Player player) {
+        ArrayList<Action> actions = new ArrayList<>();
+
+        // 10코인 이상일 경우 쿠밖에 못함
+        if (player.getCoins() >= 10) {
+            actions.add(new Action(ActionType.Coup));
+            return actions;
+        }
+
+        actions.add(new Action(ActionType.Income));
+        actions.add(new Action(ActionType.ForeignAid));
+        
+
+        // 3코인 이상이면 암살 가능
+        if (player.getCoins() >= 3) {
+            actions.add(new Action(ActionType.Assassinate, !player.hasCard(Card.Assassin)));
+        }
+
+        // 7코인 이상이면 쿠 가능
+        if (player.getCoins() >= 7) {
+            actions.add(new Action(ActionType.Coup));
+        }
+
+        // 직업 카드는 bluff인지 계산
+        actions.add(new Action(ActionType.Tax, !player.hasCard(Card.Duke)));
+        actions.add(new Action(ActionType.Steal, !player.hasCard(Card.Captain)));
+        actions.add(new Action(ActionType.Exchange, !player.hasCard(Card.Ambassador)));
+
+        return actions;
     }
+
+    
 
     Card drawOne() {
         return this.deck.remove(this.deck.size() - 1);

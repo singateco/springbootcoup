@@ -1,16 +1,19 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
-import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import com.google.gson.Gson;
 
@@ -36,7 +39,7 @@ public class WebGameController {
         this.lobbyList = new HashMap<>();
     }
 
-    @MessageMapping("/startgame")
+    @MessageMapping("/start")
     @SendToUser("/lobby")
     public String startGame(Principal principal, @Header String lobbyName) {
         String username = principal.getName();
@@ -70,6 +73,13 @@ public class WebGameController {
         return this.lobbyList.toString();
     }
 
+    @MessageMapping("/game/{lobbyName}")
+    @SendTo("/topic/game")
+    public String game(Principal principal, @Payload String payload, @DestinationVariable String lobbyName) {
+        Lobby lobby = lobbyList.get(lobbyName);
+        return lobby.game(payload);
+    }
+
     @MessageMapping("/create")
     @SendToUser("/lobby")
     public String createRoom(Principal principal, @Header String lobbyName) {
@@ -100,5 +110,4 @@ public class WebGameController {
         logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
         return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(); 
     }
-
 }

@@ -53,6 +53,9 @@ public class Player {
         this.cards = (ArrayList<Card>) cards;
     }
 
+    public boolean hasCard(Card card) {
+        return this.cards.contains(card);
+    }
 
     @Override
     public String toString() {
