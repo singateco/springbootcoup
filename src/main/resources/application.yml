@@ -11,9 +11,4 @@ spring:
   
 logging:
   level:
-    org:
-      springframework:
-        web:
-          socket:
-            config:
-              WebSocketMessageBrokerStats: TRACE
+    org.springframework.web: ""

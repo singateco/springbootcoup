@@ -1,4 +1,4 @@
-package com.soldesk2.springbootcoup.websocket.config;
+package com.soldesk2.springbootcoup.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -13,6 +13,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
+        
+                // 랜덤 Principal 이름 생성기
+                .setHandshakeHandler(new AssignPrincipalHandshakeHandler())
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }
@@ -20,6 +23,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.setApplicationDestinationPrefixes("/app");
-        registry.enableSimpleBroker("/chatroom", "/topic", "/queue");
+        registry.enableSimpleBroker("/chatroom", "/topic", "/queue", "/lobby");
     }
 }
