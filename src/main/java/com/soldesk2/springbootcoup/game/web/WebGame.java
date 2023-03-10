@@ -133,9 +133,36 @@ public class WebGame {
      * 사용 가능한 액션을 반환한다.
      * @param player 액션을 하는 플레이어.
      */
+    ArrayList<Action> getAction(Player player) {
+        ArrayList<Action> actions = new ArrayList<>();
 
+        // 10코인 이상일 경우 쿠밖에 못함
+        if (player.getCoins() >= 10) {
+            actions.add(new Action(ActionType.Coup));
+            return actions;
+        }
 
-    
+        actions.add(new Action(ActionType.Income));
+        actions.add(new Action(ActionType.ForeignAid));
+        
+
+        // 3코인 이상이면 암살 가능
+        if (player.getCoins() >= 3) {
+            actions.add(new Action(ActionType.Assassinate, !player.hasCard(Card.Assassin)));
+        }
+
+        // 7코인 이상이면 쿠 가능
+        if (player.getCoins() >= 7) {
+            actions.add(new Action(ActionType.Coup));
+        }
+
+        // 직업 카드는 bluff인지 계산
+        actions.add(new Action(ActionType.Tax, !player.hasCard(Card.Duke)));
+        actions.add(new Action(ActionType.Steal, !player.hasCard(Card.Captain)));
+        actions.add(new Action(ActionType.Exchange, !player.hasCard(Card.Ambassador)));
+
+        return actions;
+    }
 
 
     Player getTarget(Player player) {
