@@ -70,7 +70,7 @@ public class WebGameController {
         return this.lobbyList.toString();
     }
 
-    @MessageMapping("/createroom")
+    @MessageMapping("/create")
     @SendToUser("/lobby")
     public String createRoom(Principal principal, @Header String lobbyName) {
 
@@ -88,30 +88,17 @@ public class WebGameController {
             return "로비명 " + lobbyName + " 로비를 생성했다. ";
         }
 
-        Lobby existingLobby = lobbyList.get(lobbyName);
-        ArrayList<String> playerNames = existingLobby.playerNames;
+        Lobby lobby = lobbyList.get(lobbyName);
 
-        logger.debug("현재 로비 인원수: {}, 인원: {}", playerNames.size(), playerNames);
-        
-        // 이미 풀방임
-        if (playerNames.size() >= 6) {
-            String message = "로비명 " + lobbyName + "은 꽉차있다. 현재 접속한 플레이어 : " + existingLobby.getPlayerNames();
-            logger.info("유저 {}에게 메시지 보냄 : {}", name, message);
-            return message;
-        } else {
-            // 이미 그 로비에 접속해 있을시
-            if (playerNames.contains(name)) {
-                String message = "이미 로비 " + lobbyName + "에 접속해있다! 현재 접속한 플레이어: " + playerNames;
-                logger.info("유저 {}에게 메시지 보냄 : {}", name, message);
-                return message; 
-            }
-
-            // 풀방이 아닐시 로비의 플레이어 이름에 저장
-            playerNames.add(name);
-            String message = "로비명 " + lobbyName + "에 접속했다. 현재 접속한 플레이어 : " + existingLobby.getPlayerNames();
-            logger.info("유저 {}에게 메시지 보냄 : {}", name, message);
-            return message;
+        try {
+            lobby.addPlayer(name);
+        } catch (IllegalStateException e) {
+            logger.error("로비에 유저 추가시 에러 발생 : {}", e.getMessage());
+            return "에러 발생함: " + e.getMessage(); 
         }
+
+        logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
+        return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(); 
     }
 
 }

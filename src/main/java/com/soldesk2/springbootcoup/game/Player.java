@@ -28,6 +28,9 @@ public class Player {
         }
     }
 
+    public int getCardNumbers() {
+        return this.cards.size();
+    }
 
     public int getCoins() {
         return this.coins;

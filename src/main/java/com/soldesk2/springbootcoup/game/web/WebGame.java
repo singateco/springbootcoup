@@ -1,15 +1,12 @@
 package com.soldesk2.springbootcoup.game.web;
 
-import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Component;
 
 import com.soldesk2.springbootcoup.game.Action;
 import com.soldesk2.springbootcoup.game.Card;
@@ -24,6 +21,7 @@ public class WebGame {
     public static final int MAX_PLAYER = 6;
 
     private final Random random;
+    private StringBuilder stringBuilder;
 
     protected final Player[] players;
     private final List<Card> deck;
@@ -37,6 +35,7 @@ public class WebGame {
         logger.setLevel(Level.DEBUG);
         logger.debug("Setting game up... playerNames : {} destination : {}", playerNames, destination);
 
+        this.stringBuilder = new StringBuilder();
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
         this.destination = destination;
@@ -66,22 +65,24 @@ public class WebGame {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
         }
 
-        play();
+        try {
+            play();
+        } catch (Exception e) {
+            logger.error("에러 일어남", e);
+        }
+        
     }
 
-    public void play() {
-        int playerIndex = 4;
+    public void play() throws InterruptedException {
+        Thread.sleep(1000);
+        
         update();
 
-        while (alivePlayers() > 1) {
-           Player player = players[playerIndex];
-           Action[] actionOptions = getAction(player);
-        
-           logger.debug("sending message to {}", player.getName());
-
-           simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, player.getName() + ", Your turn.");
-           
-           break;
+        for (int i = 0; i <this.players.length; i++) {
+            String user = players[i].getName();
+            String msg = "Your Deck: " + players[i].getCards();
+            logger.info("Sending {} to {}", msg, user);
+            simpMessagingTemplate.convertAndSendToUser(user, destination, msg);
         }
     }
 
@@ -104,19 +105,27 @@ public class WebGame {
      * UI를 업데이트한다.
      */
     void update() {
-        String wholeMessage = "";
-        for (Player player: players) {
-            if (player != null) {
-                List<Card> cards = player.getCards();
-                String message = player.getName() + " - Coins: " + player.getCoins() + " Cards : " +
-                                 cards;
+        stringBuilder.setLength(0);
+        stringBuilder.append("살아있는 플레이어 수 : ");
+        stringBuilder.append(alivePlayers());
+        stringBuilder.append("\n");
+        stringBuilder.append("덱에 남은 카드 수 : ");
+        stringBuilder.append(this.deck.size());
+        stringBuilder.append("\n");
 
-                logger.debug("sending {} to {}", message, player.getName());
-                wholeMessage = wholeMessage + message + "\n";
-            }
+        for (int i = 0; i < players.length; i++) {
+            stringBuilder.append("플레이어 " + i + ": ");
+            stringBuilder.append("카드 ");
+            stringBuilder.append(players[i].getCardNumbers());
+            stringBuilder.append("개, ");
+            stringBuilder.append("코인 ");
+            stringBuilder.append(players[i].getCoins());
+            stringBuilder.append("개");
+            stringBuilder.append("\n");
         }
 
-        simpMessagingTemplate.convertAndSend(destination, wholeMessage);
+        String payload = stringBuilder.toString();
+        updateAllPlayers(payload);
     }
 
     /**
@@ -134,5 +143,11 @@ public class WebGame {
 
     void shuffleDeck() {
         Collections.shuffle(this.deck, this.random);
+    }
+
+    void updateAllPlayers(Object obj) {
+        for (Player player: players) {
+            simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, obj);
+        }
     }
 }

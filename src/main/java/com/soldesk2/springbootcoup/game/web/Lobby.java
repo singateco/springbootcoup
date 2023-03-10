@@ -18,7 +18,12 @@ public class Lobby {
 
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
 
+    // 현재 상황 : 밑의 enum 참고
     private State state;
+
+    // 로비 주소
+    private String destination;
+
     private String name;
     private WebGame game;
 
@@ -29,6 +34,7 @@ public class Lobby {
     public Lobby(String name, SimpMessagingTemplate simpMessagingTemplate) {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.name = name;
+        this.destination = "/lobby/" + name;
         this.playerNames = new ArrayList<>();
         this.state = State.OPEN;
     }
@@ -44,10 +50,18 @@ public class Lobby {
         }
 
         playerNames.add(playerName);
-        updateAllPlayers("현재 접속한 로비 " + this.name + "에 " + playerName + "가 접속했다.");
+        updateAllPlayers("현재 접속한 로비 " + this.name + "에 " + playerName + "가 접속했다. \n" +
+                        "현재 접속한 플레이어: " + this.playerNames);
 
         if (this.playerNames.size() >= MAX_PLAYER) {
             this.state = State.FULL;
+        }
+    }
+
+    public void updateAllPlayers(Object obj) {
+        logger.debug("{} 으로 메시지 보내는 중... {}", destination, obj);
+        for (String player: playerNames) {
+            simpMessagingTemplate.convertAndSendToUser(player, destination, obj);
         }
     }
 
@@ -64,7 +78,9 @@ public class Lobby {
         String[] playerNamesArray = new String[playerNames.size()];
         playerNamesArray = playerNames.toArray(playerNamesArray);
 
-        String destination = "/lobby/" + name;
+        logger.debug("{} 에서 게임 시작중....", destination);
+        updateAllPlayers("로비 " + this.getName() + "에서 게임 시작중...");
+
         this.game = new WebGame(playerNamesArray, destination, simpMessagingTemplate);
 
         this.state = State.STARTED;
@@ -84,7 +100,8 @@ public class Lobby {
     @Override
     public String toString() {
         return "현재 상태 : " + this.state + "\n"
-               + "현재 플레이어: " + this.playerNames;
+               + "현재 플레이어: " + this.playerNames + "\n"
+               + "대상 주소: " + this.destination;
     }
 
     @Override
