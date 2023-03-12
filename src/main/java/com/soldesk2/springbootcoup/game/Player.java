@@ -56,6 +56,20 @@ public class Player {
     public boolean hasCard(Card card) {
         return this.cards.contains(card);
     }
+    
+    public Card[] getCardList(){
+        Card[] cardList = null;
+        int index = 0;
+
+        for(int i=0; i<cards.size(); i++){
+            if(cards.get(i) != null){
+                cardList[index] = cards.get(i);
+                index++;
+            }
+        }
+        
+        return cardList;
+    }
 
     @Override
     public String toString() {

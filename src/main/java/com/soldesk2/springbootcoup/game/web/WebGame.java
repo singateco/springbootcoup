@@ -164,7 +164,57 @@ public class WebGame {
         return actions;
     }
 
+    /**
+     * 선택 액션을 수행한다
+     * 
+     * @param player
+     * @param action
+     */
+    void getdoAction(Player player, Action action){
 
+        ActionType type = action.getActionType();
+
+        switch(type){
+            case Income:
+                player.setCoins(player.getCoins()+1);
+                break;
+
+            case ForeignAid:
+                player.setCoins(player.getCoins()+2);
+                break;
+
+            case Tax:
+                player.setCoins(player.getCoins()+3);
+                break;
+
+            case Coup:
+            case Assassinate:
+                Player target_kill = getTarget(player);
+                cardDown(target_kill);
+                break;
+            
+            case Exchange:
+                changeCard(player);
+                break;
+
+            case Steal:
+                stealCoin(player);
+                break;
+
+            case Block:
+                blockAction();
+                break;
+        }
+
+    }
+
+
+    /**
+     * 사망한 플레이어와 자신을 제외하여 타겟으로 설정 가능한 플레이어들의 배열 생성 후 
+     * 타겟 선택하는 메서드로 이동
+     * @param player 타겟이 존재하는 액션을 사용하여 액션에 대한 타겟을 선택하는 플레이어
+     * @return 선택 플레이어, 선택가능한 타겟 배열, 메세지 getChoiceTarget으로 전송하여 타겟 선택, 선택한 플레이어를 반환
+     */
     Player getTarget(Player player) {
         List<Player> target = new ArrayList<>(Arrays.asList(players));
         target.remove(null);
@@ -173,7 +223,15 @@ public class WebGame {
         return getChoiceTarget(player, target.toArray(new Player[0]), "대상을 지정해주세요");
     }
 
-    public Player getChoiceTarget(Player player, Player[] choices, String message){
+    /**
+     * 선택할 수 있는 플레이어 중 타겟 선택
+     * 
+     * @param player 타겟을 선택하는 플레이어
+     * @param choices 고를 수 있는 플레이어의 배열
+     * @param message 선택 메세지
+     * @return 선택한 플레이어를 반환
+     */
+    Player getChoiceTarget(Player player, Player[] choices, String message){
         String[] choiceArray = new String[choices.length];
         for(int i=0; i<choices.length; i++){
             choiceArray[i] = choices[i].toString();
@@ -188,17 +246,119 @@ public class WebGame {
         Player result = null;
 
         while(result == null){
+            String getresult = "전달받은 값";
+
             for(int i=0; i<choices.length; i++){
-                if(choiceArray[i].equals("전닫받은값")) result = choices[i];
+                if(choiceArray[i].equals(getresult)) result = choices[i];
             }
             if(result == null){
-                String retry = "다시 입력 \n" + choiceArray;
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, retry);
+                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
             }
         }
 
         return result;
     }
+
+    
+
+    /**
+     * 암살자, Coup에 의한 카드 버리기 / 도전 의심 블록에서도 사용될 예정
+     * @param target 카드를 버리게 되는 플레이어
+     */
+    void cardDown(Player target){
+
+        
+        Card[] targetcardlist = target.getCardList();
+        String[] cardcount = new String[target.getCardList().length];
+        for(int i=0; i<cardcount.length; i++){
+            cardcount[i] = target.getCardList()[i].toString();
+        }
+        
+        String userMessage = "버릴 카드 선택 \n" + cardcount;
+        String targetname = target.toString();
+        
+        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+
+        Card result = null;
+
+        while(result == null){
+            String getresult = "전달받은 값";
+
+            for(int i=0; i<cardcount.length; i++){
+                if(cardcount[i].equals(getresult)) result = targetcardlist[i];
+            }
+            if(result == null){
+                simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+            }
+        }
+
+        target.removeCard(result);
+    }
+
+    /**
+     * 외교관에 의한 카드 교체
+     * @param player 카드를 교체할 플레이어
+     */
+    void changeCard(Player player){
+        List<Card> cardlist = player.getCards();
+        cardlist.add(drawOne());
+        cardlist.add(drawOne());
+
+        int cardsize = player.getCardNumbers();
+
+        String playername = player.toString();
+        String userMessage = "카드" + cardsize +"개 선택 (,로 개수 구분)\n" + cardlist; 
+
+        simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+
+        List<Card> result = null;
+
+        while(result == null){
+            String getresult = "전달받은 값";
+            String []resultArray = getresult.split(",");
+
+            if("전달받은 문자열 수" != String.valueOf(cardsize)){
+                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+            }
+            for(int i=0; i<resultArray.length; i++){
+                for(int j=0; j<cardsize; j++){
+                    if((cardlist.get(j).toString()).equals(resultArray[i])){ 
+                        result.add(cardlist.get(j));
+                    }
+                }
+            }
+            if(result == null || result.size() != cardsize){
+                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+            }
+        }
+
+        player.setCards(result);
+
+    }
+
+    /**
+     * 사령관에 의한 코인 강탈
+     * @param player 사령관을 사용한 플레이어
+     */
+    void stealCoin(Player player){
+        Player target = getTarget(player);
+
+        if(target.getCoins() >= 2){
+            target.setCoins(target.getCoins()-2);
+            player.setCoins(player.getCoins()+2);
+        }
+        else{
+            target = getTarget(player);
+        }
+    }
+
+    /**
+     * 액션에 대한 카운터 액션
+     */
+    void blockAction(){
+
+    }
+
 
     Card drawOne() {
         return this.deck.remove(this.deck.size() - 1);
