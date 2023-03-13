@@ -72,13 +72,14 @@ public class WebGameController {
     public String showAllGame() {
         return this.lobbyList.toString();
     }
-
+    
+    /* 
     @MessageMapping("/game/{lobbyName}")
     @SendTo("/topic/game")
     public String game(Principal principal, @Payload String payload, @DestinationVariable String lobbyName) {
         Lobby lobby = lobbyList.get(lobbyName);
         return lobby.game(payload);
-    }
+    } */
 
     @MessageMapping("/create")
     @SendToUser("/lobby")

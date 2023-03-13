@@ -60,20 +60,24 @@ public class WebGame {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
         }
 
-        try {
-            play();
-        } catch (Exception e) {
-            logger.error("에러 일어남", e);
-        }
+
+        play();
         
     }
 
-    public void play() throws InterruptedException {
-        Thread.sleep(1000);
+
+    public void play() {
+
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
         
         update();
 
-        for (int i = 0; i <this.players.length; i++) {
+        for (int i = 0; i < this.players.length; i++) {
             String user = players[i].getName();
             String msg = "Your Coin: " + players[i].getCoins() + "\n" +
                          "Your Deck: " + players[i].getCards() + "\n" +
@@ -148,7 +152,7 @@ public class WebGame {
 
         // 3코인 이상이면 암살 가능
         if (player.getCoins() >= 3) {
-            actions.add(new Action(ActionType.Assassinate, !player.hasCard(Card.Assassin)));
+            actions.add(new Action(ActionType.Assassinate, player.hasCard(Card.Assassin)));
         }
 
         // 7코인 이상이면 쿠 가능
@@ -156,10 +160,10 @@ public class WebGame {
             actions.add(new Action(ActionType.Coup));
         }
 
-        // 직업 카드는 bluff인지 계산
-        actions.add(new Action(ActionType.Tax, !player.hasCard(Card.Duke)));
-        actions.add(new Action(ActionType.Steal, !player.hasCard(Card.Captain)));
-        actions.add(new Action(ActionType.Exchange, !player.hasCard(Card.Ambassador)));
+        // 직업 카드는 인지 계산
+        actions.add(new Action(ActionType.Tax, player.hasCard(Card.Duke)));
+        actions.add(new Action(ActionType.Steal, player.hasCard(Card.Captain)));
+        actions.add(new Action(ActionType.Exchange, player.hasCard(Card.Ambassador)));
 
         return actions;
     }
@@ -299,20 +303,23 @@ public class WebGame {
      * 외교관에 의한 카드 교체
      * @param player 카드를 교체할 플레이어
      */
-    void changeCard(Player player){
+    void changeCard(Player player) {
         List<Card> cardlist = player.getCards();
         cardlist.add(drawOne());
         cardlist.add(drawOne());
 
-        int cardsize = player.getCardNumbers();
-
         String playername = player.toString();
-        String userMessage = "카드" + cardsize +"개 선택 (,로 개수 구분)\n" + cardlist; 
+        String userMessage = "버릴 카드 2개 선택\n" + cardlist; 
 
         simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
 
         List<Card> result = null;
 
+    
+
+
+
+        /*
         while(result == null){
             String getresult = "전달받은 값";
             String []resultArray = getresult.split(",");
@@ -321,16 +328,18 @@ public class WebGame {
                 simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
             }
             for(int i=0; i<resultArray.length; i++){
+
                 for(int j=0; j<cardsize; j++){
                     if((cardlist.get(j).toString()).equals(resultArray[i])){ 
                         result.add(cardlist.get(j));
                     }
+                
                 }
             }
             if(result == null || result.size() != cardsize){
                 simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
             }
-        }
+        } */
 
         player.setCards(result);
 

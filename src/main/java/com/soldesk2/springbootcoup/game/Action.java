@@ -6,22 +6,22 @@ import lombok.Getter;
 public class Action {
     
     private ActionType actionType;
-    private boolean bluff;
+    private boolean legitMove;
 
-    public Action(ActionType actionType, boolean bluff) {
+    public Action(ActionType actionType, boolean legitMove) {
         this.actionType = actionType;
-        this.bluff = bluff;
+        this.legitMove = legitMove;
     }
 
     public Action(ActionType actionType) {
         this.actionType = actionType;
-        this.bluff = false;
+        this.legitMove = true;
     }
 
 
     @Override
     public String toString() {
-        return "{" + this.actionType + " | bluff?: " + this.bluff + "}";
+        return "{" + this.actionType + " | legitMove?: " + this.legitMove + "}";
     }
 
 
