@@ -1,7 +1,9 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.Random;
 
 import org.slf4j.LoggerFactory;
@@ -13,6 +15,7 @@ import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.messaging.simp.annotation.SubscribeMapping;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.GenericMessage;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.messaging.support.NativeMessageHeaderAccessor;
@@ -33,9 +36,32 @@ public class WebGameControllertest {
     private SimpMessagingTemplate simpMessagingTemplate;
 
     public WebGameControllertest() {
-            // 로거 설정
-            this.logger.setLevel(Level.DEBUG);
-        }
+        // 로거 설정
+        this.logger.setLevel(Level.DEBUG);
+    }
+
+    
+    @MessageMapping("/headertest")
+    @SendToUser("/topic/headertest")
+    public String headerTest(org.springframework.messaging.Message<?> message) {
+        logger.debug("Message: {}", message);
+        logger.debug("Using StompHeaderAccessor to get header...");
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+
+        Principal user = accessor.getUser();
+        String username = Optional.ofNullable(user).map(Principal::getName).orElse("anonymous");
+
+        logger.debug("User: {}", username);
+        
+        ArrayList<String> nativeheader = (ArrayList<String>) accessor.getNativeHeader("header1");
+        String nativeheaderString = Optional.ofNullable(nativeheader).map(ArrayList::toString).orElse("No native Header");
+
+        logger.debug("NativeHeader: {}", nativeheaderString);
+
+
+
+        return "Header test complete. User : " + username + ", NativeHeader : " + nativeheaderString;
+    }
 
     // TODO 테스트용 : 삭제
     @MessageMapping("/test")

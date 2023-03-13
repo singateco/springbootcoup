@@ -3,16 +3,21 @@ package com.soldesk2.springbootcoup.game.web;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.soldesk2.springbootcoup.game.Action;
+import com.soldesk2.springbootcoup.game.Action.ActionType;
 import com.soldesk2.springbootcoup.game.Card;
 import com.soldesk2.springbootcoup.game.Player;
-import com.soldesk2.springbootcoup.game.Action.ActionType;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -23,9 +28,10 @@ public class WebGame {
     private StringBuilder stringBuilder;
 
     protected final Player[] players;
+
     private final List<Card> deck;
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
-
+    private final ExecutorService executor = Executors.newCachedThreadPool();
     private final String destination;
 
     private SimpMessagingTemplate simpMessagingTemplate;
@@ -43,6 +49,8 @@ public class WebGame {
 
         this.players = new Player[numberOfPlayers];
         
+
+
         // 카드마다 3장씩 덱의 크기를 설정
         this.deck = new ArrayList<>(Card.values().length * 3);
 
@@ -60,11 +68,8 @@ public class WebGame {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
         }
 
-
         play();
-        
     }
-
 
     public void play() {
 
@@ -85,7 +90,6 @@ public class WebGame {
             logger.info("Sending {} to {}", msg, user);
             simpMessagingTemplate.convertAndSendToUser(user, destination, msg);
         }
-
         
     }
 
@@ -315,35 +319,12 @@ public class WebGame {
 
         List<Card> result = null;
 
-    
-
-
-
-        /*
-        while(result == null){
-            String getresult = "전달받은 값";
-            String []resultArray = getresult.split(",");
-
-            if("전달받은 문자열 수" != String.valueOf(cardsize)){
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-            }
-            for(int i=0; i<resultArray.length; i++){
-
-                for(int j=0; j<cardsize; j++){
-                    if((cardlist.get(j).toString()).equals(resultArray[i])){ 
-                        result.add(cardlist.get(j));
-                    }
-                
-                }
-            }
-            if(result == null || result.size() != cardsize){
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-            }
-        } */
 
         player.setCards(result);
 
     }
+
+
 
     /**
      * 사령관에 의한 코인 강탈

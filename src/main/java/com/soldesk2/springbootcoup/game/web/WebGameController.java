@@ -2,18 +2,17 @@ package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import com.google.gson.Gson;
 
@@ -23,8 +22,9 @@ import ch.qos.logback.classic.Logger;
 @Controller
 public class WebGameController {
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
-    private HashMap<String, Lobby> lobbyList;
-    
+    private final HashMap<String, Lobby> lobbyList = new HashMap<>();
+    private ExecutorService executorService = Executors.newCachedThreadPool();
+
     @Autowired
     Gson gson;
 
@@ -34,10 +34,9 @@ public class WebGameController {
     public WebGameController() {
         // 로거 설정
         this.logger.setLevel(Level.DEBUG);
-
-        // 로비리스트 만들기
-        this.lobbyList = new HashMap<>();
     }
+
+
 
     @MessageMapping("/start")
     @SendToUser("/lobby")
@@ -67,23 +66,23 @@ public class WebGameController {
         return lobbyName + "의 게임을 시작함.";
     }
 
+
+
     @MessageMapping("/showallgame")
     @SendToUser("/lobby")
     public String showAllGame() {
         return this.lobbyList.toString();
     }
-    
-    /* 
-    @MessageMapping("/game/{lobbyName}")
-    @SendTo("/topic/game")
-    public String game(Principal principal, @Payload String payload, @DestinationVariable String lobbyName) {
-        Lobby lobby = lobbyList.get(lobbyName);
-        return lobby.game(payload);
-    } */
+
 
     @MessageMapping("/create")
     @SendToUser("/lobby")
-    public String createRoom(Principal principal, @Header String lobbyName) {
+    public String createRoom(Principal principal, @Header(defaultValue = "missingHeader") String lobbyName) {
+
+        if (lobbyName.equals("missingHeader")) {
+            logger.info("유저 {}가 로비명 없이 로비 생성하려함", principal.getName());
+            return "로비명을 입력해주세요.";
+        }
 
         String name = principal.getName();
         logger.info("유저 {} 가 로비명 {} 로비를 만들고 싶어함", name, lobbyName);

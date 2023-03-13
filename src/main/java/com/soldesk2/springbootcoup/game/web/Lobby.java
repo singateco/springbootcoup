@@ -34,7 +34,7 @@ public class Lobby {
     public Lobby(String name, SimpMessagingTemplate simpMessagingTemplate) {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.name = name;
-        this.destination = "/lobby/" + name;
+        this.destination = "/lobby";
         this.playerNames = new ArrayList<>();
         this.state = State.OPEN;
     }
@@ -48,6 +48,9 @@ public class Lobby {
         if (this.playerNames.contains(playerName)) {
             throw new IllegalStateException("로비명 " + this.name + "에 이미 접속해있다. 현재 접속한 플레이어: " + this.getPlayerNames());
         }
+
+        logger.info("로비 {}에 {}가 접속했다.", this.name, playerName);
+
 
         playerNames.add(playerName);
         updateAllPlayers("현재 접속한 로비 " + this.name + "에 " + playerName + "가 접속했다. \n" +
@@ -78,13 +81,17 @@ public class Lobby {
         String[] playerNamesArray = new String[playerNames.size()];
         playerNamesArray = playerNames.toArray(playerNamesArray);
 
-        logger.debug("{} 에서 게임 시작중....", destination);
+        logger.info("{} 에서 게임 시작중....", destination);
         updateAllPlayers("로비 " + this.getName() + "에서 게임 시작중...");
 
-        this.game = new WebGame(playerNamesArray, destination, simpMessagingTemplate);
-
         this.state = State.STARTED;
+        logger.info("state: {}", this.state);
+
+        this.game = new WebGame(playerNamesArray, destination, simpMessagingTemplate);
+        logger.info("Game created: {}", this.game);
+
     }
+
 
     @Override
     public boolean equals(Object o) {
