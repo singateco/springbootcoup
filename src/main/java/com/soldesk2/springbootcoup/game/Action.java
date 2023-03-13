@@ -39,4 +39,8 @@ public class Action {
     public ActionType getActionType(){
         return actionType;
     }
+    public Boolean getlegitMove(){
+        return legitMove;
+    }
+
 }
