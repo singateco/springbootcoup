@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
@@ -74,7 +73,6 @@ public class WebGameController {
         return this.lobbyList.toString();
     }
 
-
     @MessageMapping("/create")
     @SendToUser("/lobby")
     public String createRoom(Principal principal, @Header(defaultValue = "missingHeader") String lobbyName) {
@@ -110,4 +108,6 @@ public class WebGameController {
         logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
         return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(); 
     }
+
 }
+
