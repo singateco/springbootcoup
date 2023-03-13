@@ -214,8 +214,9 @@ public class WebGame {
      * 
      * @param player 액션을 선택한 플레이어
      * @param action 실행시킬 액션
+     * @param card 액션에 사용되는 카드
      */
-    void getdoAction(Player player, Action action){
+    void getdoAction(Player player, Action action, Card card){
 
         ActionType type = action.getActionType();
 
@@ -225,29 +226,41 @@ public class WebGame {
                 break;
 
             case ForeignAid:
-                if(!blockAction(player, action))player.setCoins(player.getCoins()+2);
+                if(!blockAction(player, action, card))player.setCoins(player.getCoins()+2);
                 break;
 
             case Tax:
-                if(!blockAction(player, action))player.setCoins(player.getCoins()+3);
+                if(!blockAction(player, action, card))player.setCoins(player.getCoins()+3);
                 break;
 
             case Coup:
+                player.setCoins(player.getCoins()-7);
                 cardDown(getTarget(player));
                 break;
 
             case Assassinate:
+                player.setCoins(player.getCoins()-3);
                 Player target_kill = getTarget(player);
-                if(!blockAction(player, target_kill, action))cardDown(target_kill);
+                if(!blockAction(player, target_kill, action, card)){
+                    if(target_kill == null){
+                        break;
+                    }
+                    cardDown(target_kill);
+                }
                 break;
             
             case Exchange:
-                if(!blockAction(player, action))changeCard(player);
+                if(!blockAction(player, action, card))changeCard(player);
                 break;
 
             case Steal:
                 Player target_steal = getStealTarget(player);
-                if(!blockAction(player, target_steal, action))stealCoin(player, target_steal);
+                if(!blockAction(player, target_steal, action, card)){
+                    if(target_steal == null){
+                        break;
+                    }
+                    stealCoin(player, target_steal);
+                }
                 break;
         }
 
@@ -368,6 +381,19 @@ public class WebGame {
         }
 
         target.removeCard(result);
+
+
+        String diedplayeranme = "";
+
+        for(int i=0; i<players.length; i++){
+            if(players[i] != null && players[i].getCardNumbers() == 0){
+                players[i] = null;
+                diedplayeranme = players[i].getName();
+                userMessage = "사망";
+                simpMessagingTemplate.convertAndSendToUser(diedplayeranme, destination, userMessage);
+            }
+        }
+        
     }
 
     /**
@@ -410,7 +436,7 @@ public class WebGame {
         }
 
         for (int i=0; i<cardlist.size(); i++){
-            if((cardlist.get(i).toString()).equals(result.get(0))){
+            if((cardlist.get(i)).equals(result.get(0))){
                 cardlist.remove(cardlist.get(i));
                 break;
             }
@@ -418,8 +444,9 @@ public class WebGame {
         
         if(cardsize == 2){
             for(int i=0; i<cardlist.size(); i++){
-                if((cardlist.get(i).toString()).equals(result.get(1))){
+                if((cardlist.get(i)).equals(result.get(1))){
                     cardlist.remove(cardlist.get(i));
+                    break;
                 }
             }
         }
@@ -456,10 +483,11 @@ public class WebGame {
      * 타겟이 없는 액션의 경우 null초기화
      * @param player 액션을 실행시킨 플레이어
      * @param action 실행되는 액션
+     * @param card 액션에 사용되는 카드
      * @return 카운터 액션 실행하여 카운터에 대한 boolean값 반환
      */
-    boolean blockAction(Player player, Action action){
-        return blockAction(player, null, action);
+    boolean blockAction(Player player, Action action, Card card){
+        return blockAction(player, null, action, card);
     }
 
     /**
@@ -467,9 +495,10 @@ public class WebGame {
      * @param player 액션을 실행시킨 플레이어
      * @param target 액션의 타겟 (타겟이 존재하지 않는 액션일 경우 null)
      * @param action 실행되는 액션
+     * @param card 액션에 사용되는 카드
      * @return 카운터 선택과 카드 보유 여부에 따른 카운터 성공 / 실패 반환 -> true(성공, 액션 차단)
      */
-    boolean blockAction(Player player, Player target, Action action){
+    boolean blockAction(Player player, Player target, Action action, Card card){
 
         ActionType type = action.getActionType();
         Boolean bluff = action.getlegitMove();
@@ -518,6 +547,7 @@ public class WebGame {
                 // 블러핑이 아니였을 경우
                 else{
                     cardDown(doubtplayer);
+                    successcounter(player, card);
                     return true;
                 }
             }
@@ -527,12 +557,12 @@ public class WebGame {
 
                 // 해당 액션이 "암살자"일 경우
                 case Assassinate:
-                    userMessage = "[공작으로 방해 / 패스] 선택";
+                    userMessage = "[귀족으로 방해 / 패스] 선택";
                     simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
 
                     choice = false;// 전달받은 값
                     
-                    // 타겟이 "공작으로 방해"를 선택한 경우
+                    // 타겟이 "귀족으로 방해"를 선택한 경우
                     if(choice == true){
                         return assassinatecounter(player, target, action);
                     }
@@ -618,7 +648,7 @@ public class WebGame {
                         // 타겟이 "공작으로 방어"를 선택한 경우
                         if(choice == true){
                             cardDown(player);
-                            
+                            successcounter(blockplayer, Card.Duke);
                             return true;
                         }
                         // 타겟이 "카드 한 장 희생"을 선택한 경우
