@@ -66,7 +66,31 @@ public class WebGameController {
         return lobbyName + "의 게임을 시작함.";
     }
 
+    @MessageMapping("/input")
+    @SendToUser("/lobby")
+    public String input(Principal principal, @Header String lobbyName, @Payload String payload) {
+        if (!lobbyList.containsKey(lobbyName)) {
+            logger.info("존재하지 않는 로비 {}에 유저가 입력함", lobbyName);
+            return "존재하지 않는 로비에 입력함";
+        }
 
+        Lobby lobby = lobbyList.get(lobbyName);
+        WebGame game = lobby.getGame();
+
+        if (game == null) {
+            logger.info("게임이 시작되지 않은 로비 {}에 유저가 입력함", lobbyName);
+            return "게임이 시작되지 않은 로비에 입력함";
+        }
+
+        logger.info("로비 {}에 유저 {}가 입력함", lobbyName, principal.getName());
+            
+        if (game.makeMove(principal.getName(), payload)) {
+            return "입력 성공";
+        } else {
+            return "입력 실패";
+        }
+
+    }
 
     @MessageMapping("/showallgame")
     @SendToUser("/lobby")

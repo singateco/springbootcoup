@@ -3,13 +3,9 @@ package com.soldesk2.springbootcoup.game.web;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.CompletableFuture;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -31,8 +27,8 @@ public class WebGame {
 
     private final List<Card> deck;
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
-    private final ExecutorService executor = Executors.newCachedThreadPool();
     private final String destination;
+    private final List<String> allowedActions;
 
     private SimpMessagingTemplate simpMessagingTemplate;
 
@@ -40,6 +36,7 @@ public class WebGame {
         logger.setLevel(Level.DEBUG);
         logger.debug("Setting game up... playerNames : {} destination : {}", playerNames, destination);
 
+        this.allowedActions = new ArrayList<String>();
         this.stringBuilder = new StringBuilder();
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
@@ -90,8 +87,48 @@ public class WebGame {
             logger.info("Sending {} to {}", msg, user);
             simpMessagingTemplate.convertAndSendToUser(user, destination, msg);
         }
+
+        Player nowPlayer = players[0];
+        ArrayList<Action> actions = getAction(nowPlayer);
+        allowedActions.clear();
         
+        for (Action action : actions) {
+            allowedActions.add(action.getActionType().toString());
+        }
+    
+        String userMessage = "Your Coin: " + nowPlayer.getCoins() + "\n" +
+                             "Your Deck: " + nowPlayer.getCards() + "\n" +
+                             "Actions: " + allowedActions;
+                            
+        Message message = new Message(MessageType.UPDATE, actions, userMessage);
+        simpMessagingTemplate.convertAndSendToUser(nowPlayer.getName(), destination, message);
     }
+
+    public boolean makeMove(String username, String action) {
+        if (Arrays.stream(players).anyMatch(player -> player.getName().equals(username))) {
+            
+            if (allowedActions.contains(action)) {
+                // TODO : Change game state and continue?
+
+                logger.info("Player {} made move {}", username, action);
+                allowedActions.clear();
+
+                this.updateAllPlayers("Player " + username + " made move " + action);
+                return true;
+            }
+            
+            logger.info("Player {} made invalid move {}", username, action);
+
+            Message message = new Message(MessageType.ERROR, allowedActions, "잘못된 액션입니다. 현재 가능한 액션 : " + allowedActions);
+            simpMessagingTemplate.convertAndSendToUser(username, destination, message);
+            return false;
+
+        } else {
+            logger.info("Player {} is not in game", username);
+            return false;
+        }
+    }
+
 
     /**
      * 게임 안에 아직 패배하지 않은 플레이어의 수를 출력한다.
@@ -264,6 +301,7 @@ public class WebGame {
             }
         }
 
+    
         return result;
     }
 

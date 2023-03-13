@@ -1,6 +1,7 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import org.slf4j.LoggerFactory;
@@ -29,7 +30,7 @@ public class Lobby {
 
     private SimpMessagingTemplate simpMessagingTemplate;
 
-    public ArrayList<String> playerNames;
+    public List<String> playerNames;
     
     public Lobby(String name, SimpMessagingTemplate simpMessagingTemplate) {
         this.simpMessagingTemplate = simpMessagingTemplate;
