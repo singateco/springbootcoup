@@ -43,6 +43,10 @@ public class WebGame {
 
     private static final long ACTION_TIMEOUT_SECONDS = 60;
 
+    // 게임 시작시 접속한 플레이어들 이름 목록
+    String[] playerNames;
+
+    // 살아있는 플레이어 목록
     private Player[] players;
     private List<Card> deck;
     private final String destination;
@@ -58,6 +62,7 @@ public class WebGame {
     }
 
     public void play(String[] playerNames) {
+        this.playerNames = playerNames;
 
         int numberOfPlayers = playerNames.length;
         this.players = new Player[numberOfPlayers];
@@ -494,8 +499,8 @@ public class WebGame {
      * @param obj 전달할 메시지의 payload
      */
     void sendToAllPlayers(Object obj) {
-        for (Player player : players) {
-            simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, obj);
+        for (String playername : playerNames) {
+            simpMessagingTemplate.convertAndSendToUser(playername, destination, obj);
         }
     }
 
