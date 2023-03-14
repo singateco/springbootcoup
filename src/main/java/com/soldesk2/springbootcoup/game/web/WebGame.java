@@ -351,32 +351,32 @@ public class WebGame {
      * @param message 선택 메세지
      * @return 선택한 플레이어를 반환
      */
-    Player getChoiceTarget(Player player, Player[] choices, String message) {
-        String[] choiceArray = new String[choices.length];
+    Player getChoiceTarget(Player player, Player[] choices, String message){
         for (int i = 0; i < choices.length; i++) {
-            choiceArray[i] = choices[i].toString();
+            allowedActions.add(choices[i].toString());
         }
 
-        String userMessage = message + "\n" + choiceArray;
+        Message userMessage = new Message(MessageType.CHOICE, allowedActions, message);
 
         String playername = player.toString();
 
         simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+        
 
         Player result = null;
 
         while (result == null) {
-            String getresult = "전달받은 값";
+            String getresult = "전달 받은 값";
 
             for (int i = 0; i < choices.length; i++) {
-                if (choiceArray[i].equals(getresult))
-                    result = choices[i];
+                if (choices[i].toString().equals(getresult)) result = choices[i];
             }
             if (result == null) {
                 simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
             }
         }
-
+        allowedActions.clear();
+    
         return result;
     }
 
@@ -387,13 +387,13 @@ public class WebGame {
      */
     void cardDown(Player target) {
 
-        Card[] targetcardlist = target.getCardList();
-        String[] cardcount = new String[target.getCardList().length];
-        for (int i = 0; i < cardcount.length; i++) {
-            cardcount[i] = target.getCardList()[i].toString();
+        
+        List<Card> targetcardlist = target.getCardList();
+        for (int i = 0; i < targetcardlist.size(); i++ ){
+            allowedActions.add(targetcardlist.get(i).toString());
         }
-
-        String userMessage = "버릴 카드 선택 \n" + cardcount;
+        
+        Message userMessage = new Message(MessageType.CHOICE, allowedActions, "버릴 카드 선택");
         String targetname = target.toString();
 
         simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
@@ -402,17 +402,16 @@ public class WebGame {
         Card result = null;
 
         while (result == null) {
-            String getresult = "전달받은 값";
+            String getresult = "전달 받은 값"; // 전달 받은 값
 
-            for (int i = 0; i < cardcount.length; i++) {
-                if (cardcount[i].equals(getresult))
-                    result = targetcardlist[i];
+            for (int i = 0; i < targetcardlist.size(); i++) {
+                if (targetcardlist.get(i).toString().equals(getresult)) result = targetcardlist.get(i);
             }
             if (result == null) {
                 simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
             }
         }
-
+        allowedActions.clear();
         target.removeCard(result);
 
         String diedplayeranme = "";
@@ -421,8 +420,8 @@ public class WebGame {
             if (players[i] != null && players[i].getCardNumbers() == 0) {
                 players[i] = null;
                 diedplayeranme = players[i].getName();
-                userMessage = "사망";
-                simpMessagingTemplate.convertAndSendToUser(diedplayeranme, destination, userMessage);
+                String userdiedMessage = diedplayeranme + "사망!";
+                simpMessagingTemplate.convertAndSendToUser(diedplayeranme, destination, userdiedMessage);
             }
         }
 
@@ -438,26 +437,28 @@ public class WebGame {
         cardlist.add(drawOne());
         cardlist.add(drawOne());
 
+        for (Card card : cardlist) {
+            allowedActions.add(card.toString());
+        }
+
         int cardsize = player.getCardNumbers();
 
         String playername = player.toString();
-        String userMessage = "버릴 카드 2개 선택 \n" + cardlist;
+        Message userMessage = new Message(MessageType.CHOICE, allowedActions, "버릴 카드 2개 선택");
 
         simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
 
-        List<Card> result = null;
+        List<Card> result = new ArrayList<>();
 
         while (result == null) {
-            String getresult = "전달받은 값";
-            String[] resultArray = getresult.split(",");
-            // Card형태로 변환 필요
+            List<String> getresult = new ArrayList<>();  // 전달 받은 값
 
-            if ("전달받은 문자열 수" != String.valueOf(cardsize)) {
+            if (getresult.size() != cardsize) {
                 simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
             }
-            for (int i = 0; i < resultArray.length; i++) {
+            for (int i = 0; i < getresult.size(); i++) {
                 for (int j = 0; j < cardlist.size(); j++) {
-                    if ((cardlist.get(j).toString()).equals(resultArray[i])) {
+                    if ((cardlist.get(j).toString()).equals(getresult.get(i))) { 
                         result.add(cardlist.get(j));
                     }
                 }
@@ -467,6 +468,7 @@ public class WebGame {
             }
 
         }
+        allowedActions.clear();
 
         for (int i = 0; i < cardlist.size(); i++) {
             if ((cardlist.get(i)).equals(result.get(0))) {
@@ -537,32 +539,38 @@ public class WebGame {
 
         String targetname = target.toString();
         String playername = player.toString();
-        String userMessage = null;
+        Message userMessage = null;
 
-        boolean choice = false; // 의심 or 방해 선택 여부
+        String choice = ""; // 의심 or 방해 선택 여부 
+        
 
         // 액션이 ForeignAid이 아닐 경우
-        if (type != type.ForeignAid) {
+        if (type != ActionType.ForeignAid) {
             List<Player> otherplayers = getotherplayers(player);
-            userMessage = "[의심 / 패스] 선택";
+
+            allowedActions.add("의심");
+            allowedActions.add("패스");
+            userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+
             for (int i = 0; i < otherplayers.size(); i++) {
                 String otherplayersname = otherplayers.get(i).getName().toString();
                 simpMessagingTemplate.convertAndSendToUser(otherplayersname, destination, userMessage);
             }
+            allowedActions.clear();
 
             // 값 전달 받은 후
             Player otherplayer = new Player("aa", Card.Ambassador, Card.Captain); // 임의의 임시 플레이어
-            choice = false; // 임의의 의심 여부
+            choice = "전달 받은 값"; // 전달 받은 값
 
-            HashMap<Player, Boolean> doubtplayerMap = new HashMap<Player, Boolean>();
+            HashMap<Player, String> doubtplayerMap = new HashMap<Player, String>();
             for (int i = 0; i < otherplayers.size(); i++) {
                 doubtplayerMap.put(otherplayer, choice);
             }
 
             Player doubtplayer = null;
-
+            
             for (Player key : doubtplayerMap.keySet()) {
-                if (doubtplayerMap.get(key).equals(true)) {
+                if (doubtplayerMap.get(key).equals("의심")) {
                     doubtplayer = key;
                     break;
                 }
@@ -586,38 +594,44 @@ public class WebGame {
             else if (target != null) {
                 switch (type) {
 
-                    // 해당 액션이 "암살자"일 경우
-                    case Assassinate:
-                        userMessage = "[귀족으로 방해 / 패스] 선택";
-                        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                // 해당 액션이 "암살자"일 경우
+                case Assassinate:
+                    allowedActions.add("귀족으로 방해");
+                    allowedActions.add("패스");
+                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                    allowedActions.clear();
 
-                        choice = false;// 전달받은 값
-
+                    choice = "전달 받은 값";// 전달 받은 값
+                    
+                    switch (choice) {
                         // 타겟이 "귀족으로 방해"를 선택한 경우
-                        if (choice == true) {
+                        case "귀족으로 방해":
                             return assassinatecounter(player, target, action);
-                        }
                         // 타겟이 "패스"를 선택할 경우
-                        else {
+                        case "패스":
                             return false;
-                        }
+                    }
 
-                        // 해당 액션이 "사령관"일 경우
-                    case Steal:
-                        userMessage = "[사령관으로 방해 / 외교관으로 방해 / 패스] 선택";
-                        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                // 해당 액션이 "사령관"일 경우
+                case Steal:
+                    allowedActions.add("사령관으로 방해");
+                    allowedActions.add("외교관으로 방해");
+                    allowedActions.add("패스");
+                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                    allowedActions.clear();
+                    
+                    choice = "전달 받은 값"; // 전달 받은 값
 
-                        // 타겟이 선택한 임의의 값(전달받은 값) -> Steal에서 쓰이는 값
-                        String Steal = "전달받은 값";
+                    switch (choice) {
+                        // 타겟이 "사령관으로 방어"를 선택한 경우
+                        case "사령관으로 방해":
+                            return stealcounter(player, target, Card.Captain);
 
-                        switch (Steal) {
-                            // 타겟이 "사령관으로 방어"를 선택한 경우
-                            case "사령관":
-                                return stealcounter(player, target, Card.Captain);
-
-                            // 타겟이 "외교관으로 방어"를 선택한 경우
-                            case "외교관":
-                                return stealcounter(player, target, Card.Ambassador);
+                        // 타겟이 "외교관으로 방어"를 선택한 경우
+                        case "외교관으로 방해":
+                            return stealcounter(player, target, Card.Ambassador);
 
                             // 타겟이 "패스"를 선택한 경우
                             case "패스":
@@ -625,34 +639,34 @@ public class WebGame {
                         }
                 }
             }
-            // 아무도 의심을 누르지않고 타겟이 없을 경우
-            else {
-                return false;
-            }
-            return false;
+        // 아무도 의심을 누르지않고 타겟이 없을 경우
+        return false;
         }
         // 액션이 ForeignAid일 경우
         else {
             List<Player> otherplayers = getotherplayers(player);
-            userMessage = "[방해 / 패스] 선택";
+            allowedActions.add("방해");
+            allowedActions.add("패스");
+            userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
             for (int i = 0; i < otherplayers.size(); i++) {
                 String otherplayersname = otherplayers.get(i).getName().toString();
                 simpMessagingTemplate.convertAndSendToUser(otherplayersname, destination, userMessage);
             }
+            allowedActions.clear();
 
             // 값 전달 받은 후
             Player otherplayer = new Player("aa", Card.Ambassador, Card.Captain); // 임의의 임시 플레이어
-            choice = false; // 임의의 방해 여부
+            choice = "전달 받은 값"; // 전달 받은 값
 
-            HashMap<Player, Boolean> blockplayerMap = new HashMap<Player, Boolean>();
+            HashMap<Player, String> blockplayerMap = new HashMap<Player, String>();
             for (int i = 0; i < otherplayers.size(); i++) {
                 blockplayerMap.put(otherplayer, choice);
             }
 
             Player blockplayer = null;
-
+            
             for (Player key : blockplayerMap.keySet()) {
-                if (blockplayerMap.get(key).equals(true)) {
+                if (blockplayerMap.get(key).equals("방해")) {
                     blockplayer = key;
                     break;
                 }
@@ -661,23 +675,30 @@ public class WebGame {
             // 방해를 선택한 플레이어가 존재할 경우
             if (blockplayer != null) {
 
-                userMessage = "[의심 / 패스] 선택";
+                allowedActions.add("의심");
+                allowedActions.add("패스");
+                userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
                 simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+                allowedActions.clear();
 
-                // 값 전달받은 후
-                choice = true; // 전달받은 값
+                // 값 전달 받은 후
+                choice = "전달 받은 값"; // 전달 받은 값
 
                 // 플레이어가 의심한 경우
-                if (choice == true) {
+                if (choice == "의심") {
                     // 타겟이 공작 카드를 가지고 있을 경우
                     if (blockplayer.hasCard(Card.Duke)) {
-                        userMessage = "[공작으로 방어 / 카드 한 장 희생] 선택";
-
-                        // 값 전달받은 후
-                        choice = true; // 전달받은 값
+                        allowedActions.add("공작으로 방어");
+                        allowedActions.add("카드 한 장 희생");
+                        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+                        simpMessagingTemplate.convertAndSendToUser(blockplayer.getName(), destination, userMessage);
+                        allowedActions.clear();
+                        
+                        // 값 전달 받은 후
+                        choice = "전달 받은 값"; // 전달 받은 값
 
                         // 타겟이 "공작으로 방어"를 선택한 경우
-                        if (choice == true) {
+                        if (choice == "공작으로 방어") {
                             cardDown(player);
                             successcounter(blockplayer, Card.Duke);
                             return true;
@@ -715,33 +736,46 @@ public class WebGame {
      * @param action 실행되는 액션
      * @return 선택여부와 카드여부에 따라 카운터 결과 값 boolean으로 반환 -> true(성공, 액션 차단)
      */
-    boolean assassinatecounter(Player player, Player target, Action action) {
-
-        ActionType type = action.getActionType();
+    boolean assassinatecounter(Player player, Player target, Action action){
 
         String playername = player.toString();
         String targetname = target.toString();
-        String userMessage = null;
+        Message userMessage = null;
 
-        boolean choice = false; // 의심 or 방해 선택 여부 (y,n)
+        String choice = ""; // 의심 or 방해 선택 여부 (y,n)
 
-        userMessage = "[의심 / 패스] 선택";
+        allowedActions.add("의심");
+        allowedActions.add("패스");
+        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
         simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+        allowedActions.clear();
 
-        // 값 전달 받은 후
-        choice = true; // 전달 받은 값
+        // 값 전달 받은 후 
+        choice = "전달 받은 값"; // 전달 받은 값
 
         // 타겟의 방해에 대한 의심
-        if (choice == true) {
+        if (choice == "의심") {
             // 타겟이 귀족 카드를 가지고 있을 경우
             if (target.hasCard(Card.Contessa)) {
-                userMessage = "[귀족으로 방어 / 카드 한 장 희생] 선택";
+                allowedActions.add("귀족으로 방해");
+                allowedActions.add("카드 한 장 희생");
+                userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
                 simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                allowedActions.clear();
 
-                // 값 전달받은 후
-                choice = true; // 전달 받은 값
-                successcounter(target, Card.Contessa);
-                return true;
+                // 값 전달 받은 후 
+                choice = "전달 받은 값"; // 전달 받은 값
+
+                // "귀족으로 방해"를 선택했을 경우
+                if (choice.equals("귀족으로 방해")) {
+                    successcounter(target, Card.Contessa);
+                    return true;
+                }
+                // "카드 한 장 희생"을 선택했을 경우
+                else {
+                    cardDown(target);
+                    return false;
+                }
 
             }
             // 타겟에게 귀족 카드가 없을 경우
@@ -770,75 +804,83 @@ public class WebGame {
 
         String playername = player.toString();
         String targetname = target.toString();
-        String userMessage = null;
+        Message userMessage = null;
+        String choice = "";
 
-        boolean choice = false;
-
-        userMessage = "[의심 / 패스] 선택";
+        allowedActions.add("의심");
+        allowedActions.add("패스");
+        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
         simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+        allowedActions.clear();
 
-        // 값 전달받은 후
-        choice = true; // 전달 받은 값
+        // 값 전달 받은 후 
+        choice = "전달 받은 값"; // 전달 받은 값
 
         // 타겟의 방해에 대한 의심
-        if (choice == true) {
-
-            switch (card) {
+        if (choice == "의심") {
+            
+            switch(card){
 
                 // 타겟이 "사령관으로 방어"를 선택했을 경우
                 case Captain:
-                    // 타겟이 사령관 카드를 가지고 있을 경우
-                    if (target.hasCard(Card.Captain)) {
-                        userMessage = "[사령관으로 방어 / 카드 한 장 희생] 선택";
-                        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                // 타겟이 사령관 카드를 가지고 있을 경우
+                if (target.hasCard(Card.Captain)) {
+                    allowedActions.add("사령관으로 방어");
+                    allowedActions.add("카드 한 장 희생");
+                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                    allowedActions.clear();
 
-                        // 값 전달 받은 후
-                        choice = true; // 전달 받은 값
+                    // 값 전달 받은 후 
+                    choice = "전달 받은 값"; // 전달 받은 값
 
-                        // 타겟이 "사령관으로 방어"를 선택했을 경우
-                        if (choice == true) {
-                            cardDown(player);
-                            successcounter(target, Card.Captain);
-                            return true;
-                        }
-                        // 타겟이 "카드 한 장 희생"을 선택했을 경우
-                        else {
-                            cardDown(target);
-                            return false;
-                        }
+                    // 타겟이 "사령관으로 방어"를 선택했을 경우
+                    if (choice.equals("사령관으로 방어")) {
+                        cardDown(player);
+                        successcounter(target, Card.Captain);
+                        return true;
                     }
-                    // 타겟이 사령관 카드를 가지고 있지 않은 경우
+                    // 타겟이 "카드 한 장 희생"을 선택했을 경우
                     else {
                         cardDown(target);
                         return false;
                     }
+                }
+                // 타겟이 사령관 카드를 가지고 있지 않은 경우
+                else {
+                    cardDown(target);
+                    return false;
+                }
 
                     // 타겟이 "외교관으로 방어"를 선택했을 경우
                 case Ambassador:
-                    if (target.hasCard(Card.Ambassador)) {
-                        userMessage = "[외교관으로 방어 / 카드 한 장 희생] 선택";
-                        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                if (target.hasCard(Card.Ambassador)) {
+                    allowedActions.add("외교관으로 방어");
+                    allowedActions.add("카드 한 장 희생");
+                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
+                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
+                    allowedActions.clear();
 
-                        // 값 전달 받은 후
-                        choice = true; // 전달 받은 값
+                    // 값 전달 받은 후 
+                    choice = "전달 받은 값"; // 전달 받은 값
 
-                        // 타겟이 "외교관으로 방어"를 선택했을 경우
-                        if (choice == true) {
-                            cardDown(player);
-                            successcounter(target, Card.Ambassador);
-                            return true;
-                        }
-                        // 타겟이 "카드 한 장 희생"을 선택했을 경우
-                        else {
-                            cardDown(target);
-                            return false;
-                        }
+                    // 타겟이 "외교관으로 방어"를 선택했을 경우
+                    if (choice.equals("외교관으로 방어")) {
+                        cardDown(player);
+                        successcounter(target, Card.Ambassador);
+                        return true;
                     }
-                    // 타겟이 외교관 카드를 가지고 있지 않은 경우
+                    // 타겟이 "카드 한 장 희생"을 선택했을 경우
                     else {
                         cardDown(target);
                         return false;
                     }
+                }
+                // 타겟이 외교관 카드를 가지고 있지 않은 경우
+                else {
+                    cardDown(target);
+                    return false;
+                }
             }
         }
         // 타겟의 방해에 대한 의심을 하지 않을 경우

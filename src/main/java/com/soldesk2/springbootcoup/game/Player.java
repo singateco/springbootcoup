@@ -57,14 +57,12 @@ public class Player {
         return this.cards.contains(card);
     }
     
-    public Card[] getCardList(){
-        Card[] cardList = null;
-        int index = 0;
+    public List<Card> getCardList(){
+        List<Card> cardList = new ArrayList<> ();
 
         for(int i=0; i<cards.size(); i++){
             if(cards.get(i) != null){
-                cardList[index] = cards.get(i);
-                index++;
+                cardList.add(cards.get(i));
             }
         }
         
