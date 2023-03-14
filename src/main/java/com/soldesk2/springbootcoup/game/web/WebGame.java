@@ -37,7 +37,6 @@ public class WebGame {
     private SimpMessagingTemplate simpMessagingTemplate;
 
     private final Random random;
-    private StringBuilder stringBuilder;
     public final ConcurrentLinkedQueue<Entry<String, String>> playerResponseQueue = new ConcurrentLinkedQueue<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
@@ -52,7 +51,6 @@ public class WebGame {
     private final String destination;
 
     public WebGame(String destination, SimpMessagingTemplate simpMessagingTemplate) {
-        this.stringBuilder = new StringBuilder();
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
         this.destination = destination;
@@ -257,11 +255,13 @@ public class WebGame {
             log("%s가 챌린지한다", counterAction.player);
 
             boolean lying = !player.hasCard(card);
+
             if (lying) {
-                log("챌린지 성공!");
+                log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, target);
                 sacrificeCard(player);
+
             } else {
-                log("챌린지 실패!");
+                log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player);
                 sacrificeCard(counterAction.player);
 
                 // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
@@ -354,12 +354,23 @@ public class WebGame {
         return copy;
     }
 
+    /**
+     * 플레이어가 카드를 1장 버리게 한다.
+     * @param player 카드를 버리게 할 플레이어
+     * @throws InterruptedException
+     */
     private void sacrificeCard(Player player) throws InterruptedException {
         Card card = getCardToSacrifice(player);
         log("%s가 %s를 버림", player, card);
         player.removeCard(card);
     }
 
+    /**
+     * 플레이어에게 버릴 카드를 선택하게 한다.
+     * @param player 카드를 선택하게 할 플레이어
+     * @return 선택한 카드
+     * @throws InterruptedException
+     */
     private Card getCardToSacrifice(Player player) throws InterruptedException {
         return getChoice(player, player.getCards().toArray(new Card[0]), "버릴 카드를 선택하세요");
     }
@@ -521,6 +532,15 @@ public class WebGame {
         }
     }
 
+    /**
+     *  카운터 액션을 반환한다. 카운터 액션이 없는 경우 null을 반환한다.
+     * @param action 액션
+     * @param card 카드 
+     * @param player 플레이어
+     * @param target 타겟
+     * @return 카운터 액션
+     * @throws InterruptedException
+     */
     CounterAction getCounterAction(Action action, Card card, Player player, Player target) throws InterruptedException {
         // 카운터가 불가능한 액션인 경우 null을 반환한다.
         if (action != Action.ForeignAid && card == null) {
@@ -618,6 +638,14 @@ public class WebGame {
         sendToAllPlayers(message);
     }
 
+    /**
+     * Future 중에서 Predicate가 true인 첫번째 Future를 반환한다.
+     * @param <T> Future의 결과 타입
+     * @param futures Future들
+     * @param predicate Predicate
+     * @return Predicate가 true인 첫번째 Future
+     * @throws InterruptedException
+     */
     <T> Future<T> getFirst(Collection<Future<T>> futures, Predicate<T> predicate) throws InterruptedException {
         while (!futures.isEmpty()) {
             if (Thread.interrupted()) {
@@ -648,6 +676,9 @@ public class WebGame {
         return null;
     }
 
+    /**
+     * 플레이어에게 자신의 카드만 볼 수 있도록 메시지를 담기 위해 사용하는 클래스
+     */
     private static class Update {
         public Card[] localPlayerCards;
         public PlayerState[] players;
@@ -674,6 +705,10 @@ public class WebGame {
         }
     }
 
+    
+    /**
+     * 플레이어의 상태를 담기 위해 사용하는 클래스
+     */
     private static class PlayerState {
         public String name;
         public int coins;
