@@ -142,7 +142,8 @@ public class WebGame {
             }
 
             // 남아 있는 플레이어가 승리한다.
-            playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst().orElseThrow(IllegalStateException::new));
+            playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst()
+                    .orElseThrow(IllegalStateException::new));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -199,63 +200,79 @@ public class WebGame {
         Arrays.stream(players).forEach(this::updatePlayer);
     }
 
-
     void updatePlayer(Player player) {
         if (player == null) {
             return;
         }
-        
+
         Update update = new Update(player, players);
         Message message = new Message(MessageType.UPDATE, update, update.toString());
 
         sendMessage(player, message);
     }
 
-
-
     boolean doAction(Action action, Player player, Player target) throws InterruptedException {
         return doAction(action, action.card, player, target);
     }
 
+    /**
+     * 액션을 실행한다.
+     * @param action 액션
+     * @param card 카드 
+     * @param player 플레이어
+     * @param target 타겟
+     * @return 액션이 성공적으로 실행되었는지 여부
+     * @throws InterruptedException
+     */
     boolean doAction(Action action, Card card, Player player, Player target) throws InterruptedException {
         // 돈이 필요한 액션은 돈을 먼저 낸다.
         payCost(action, player);
         CounterAction counterAction = getCounterAction(action, card, player, target);
 
-        if (counterAction != null) {
-            if (counterAction.isBlock) {
-                log("%s가 %s로 블록함", counterAction.player, counterAction.card);
-                // 이 블록도 챌린지될수 있음
-                if (doAction(Action.Block, counterAction.card, counterAction.player, player)) {
-                    log("블록 성공!");
-                    return false;
-                } else {
-                    log("블록 실패!");
-                    // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
-                    if (target != null && target.getCardNumbers() == 0)
-                        return false;
-                }
+        // 카운터 액션이 없다면 바로 액션을 실행한다.
+        if (counterAction == null) {
+            handleAction(action, player, target);
+            return true;
+        }
+
+        // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
+
+        // 블록이 가능하다면 블록을 먼저 시도한다.
+        if (counterAction.isBlock) {
+            log("%s가 %s로 블록함", counterAction.player, counterAction.card);
+
+            // 이 블록도 챌린지될수 있음
+            if (doAction(Action.Block, counterAction.card, counterAction.player, player)) {
+                log("블록 성공!");
+                return false;
+
             } else {
-                log("%s가 챌린지한다", counterAction.player);
-
-                boolean lying = !player.hasCard(card);
-                if (lying) {
-                    log("챌린지 성공!");
-                    sacrificeCard(player);
-                } else {
-                    log("챌린지 실패!");
-                    sacrificeCard(counterAction.player);
-
-                    // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
-                    player.removeCard(card);
-                    deck.add(card);
-                    shuffleDeck();
-                    player.addCard(drawOne());
-                }
-                
-                if (lying || (target != null && target.getCardNumbers() == 0)) {
+                log("블록 실패!");
+                // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
+                if (target != null && target.getCardNumbers() == 0)
                     return false;
-                }
+            }
+
+        } else {
+            log("%s가 챌린지한다", counterAction.player);
+
+            boolean lying = !player.hasCard(card);
+            if (lying) {
+                log("챌린지 성공!");
+                sacrificeCard(player);
+            } else {
+                log("챌린지 실패!");
+                sacrificeCard(counterAction.player);
+
+                // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
+                player.removeCard(card);
+                deck.add(card);
+                shuffleDeck();
+                player.addCard(drawOne());
+            }
+
+            if (lying || (target != null && target.getCardNumbers() == 0)) {
+                return false;
             }
         }
 
@@ -316,11 +333,12 @@ public class WebGame {
         deck.addAll(copy);
         shuffleDeck();
     }
-    
+
     /**
      * 카드를 2장 버리게 한다.
+     * 
      * @param player 플레이어
-     * @param cards 카드를 2장 버리게 할 카드들
+     * @param cards  카드를 2장 버리게 할 카드들
      * @return 버린 카드를 제외한 카드들
      */
     private ArrayList<Card> doExchange(Player player, ArrayList<Card> cards) throws InterruptedException {
@@ -411,22 +429,21 @@ public class WebGame {
         sendMessage(player, message);
 
         Future<String> futureResponse = executorService.submit(
-            () -> {
-                try {
-                    while (true) {
-                        Entry<String, String> s = playerResponseQueue.poll();
-                        if (s != null && s.getKey().equals(player.getName())) {
-                            return s.getValue();
+                () -> {
+                    try {
+                        while (true) {
+                            Entry<String, String> s = playerResponseQueue.poll();
+                            if (s != null && s.getKey().equals(player.getName())) {
+                                return s.getValue();
+                            }
+                            Thread.sleep(150);
                         }
-                        Thread.sleep(150);
+                    } catch (Exception e) {
+                        logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
+                        return null;
                     }
-                } catch (Exception e) {
-                    logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
-                    return null;
-                }
-                
-            }
-        );
+
+                });
 
         try {
             String response = futureResponse.get(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -509,6 +526,7 @@ public class WebGame {
         if (action != Action.ForeignAid && card == null) {
             return null;
         }
+
         Map<Future<String>, Player> futureMap = new HashMap<>();
         Map<String, Card> cardMap = new HashMap<>();
 
@@ -630,7 +648,6 @@ public class WebGame {
         return null;
     }
 
-    
     private static class Update {
         public Card[] localPlayerCards;
         public PlayerState[] players;
@@ -638,9 +655,9 @@ public class WebGame {
         public Update(Player localPlayer, Player[] players) {
             this.localPlayerCards = localPlayer.getCards().toArray(new Card[0]);
             this.players = Arrays.stream(players)
-                                 .filter(Objects::nonNull)
-                                 .map(PlayerState::new)
-                                 .toArray(PlayerState[]::new);
+                    .filter(Objects::nonNull)
+                    .map(PlayerState::new)
+                    .toArray(PlayerState[]::new);
         }
 
         @Override
@@ -649,7 +666,8 @@ public class WebGame {
             message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
 
             for (int i = 0; i < players.length; i++) {
-                message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, " + players[i].cardNumbers + " cards) ";
+                message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, "
+                        + players[i].cardNumbers + " cards) ";
             }
 
             return message;

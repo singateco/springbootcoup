@@ -82,9 +82,10 @@ public class Lobby {
         updateAllPlayers("로비 " + this.getName() + "에서 게임 시작중...");
 
 
-        this.game.play(playerNamesArray);
-        this.state = State.STARTED;
         logger.info("Game Started at lobbyName {}, State:", this.name, this.state);
+        this.state = State.STARTED;
+
+        this.game.play(playerNamesArray);
     }
 
 
