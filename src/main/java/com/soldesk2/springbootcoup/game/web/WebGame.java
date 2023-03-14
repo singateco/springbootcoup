@@ -19,17 +19,18 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 
 public class WebGame {
+
+    private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
+    private SimpMessagingTemplate simpMessagingTemplate;
+    
     private final Random random;
     private StringBuilder stringBuilder;
 
     protected final Player[] players;
-
     private final List<Card> deck;
-    private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
     private final String destination;
-    private final List<String> allowedActions;
 
-    private SimpMessagingTemplate simpMessagingTemplate;
+    private final List<String> allowedActions;
 
     public WebGame(String[] playerNames, String destination, SimpMessagingTemplate simpMessagingTemplate) {
         logger.setLevel(Level.DEBUG);
@@ -66,7 +67,6 @@ public class WebGame {
     }
 
     public void play() {
-
         // TODO: 서버 딜레이 시뮬레이션용 (완성시 삭제)
         try {
             Thread.sleep(1000);
@@ -76,20 +76,33 @@ public class WebGame {
 
         update();
 
-        for (int i = 0; i < this.players.length; i++) {
-            String user = players[i].getName();
-            String msg = "Your Coin: " + players[i].getCoins() + "\n" +
-                    "Your Deck: " + players[i].getCards() + "\n" +
-                    "Actions: " + getAction(players[i]);
-            logger.info("Sending {} to {}", msg, user);
-            simpMessagingTemplate.convertAndSendToUser(user, destination, msg);
+        int playerIndex = 0;
+
+        // 게임이 끝날 때까지 반복
+        while (alivePlayers() > 1) {
+            // 행동할 플레이어를 정한다.
+            Player nowPlayer = players[playerIndex];
+
+            requestAction(nowPlayer);
+
+
+            // 행동할 플레이어를 다음 플레이어로 변경한다.
+            do {
+                playerIndex = (playerIndex + 1) % players.length;
+            } while (players[playerIndex] == null);
+
         }
 
-        // 행동할 플레이어를 정한다.
-        Player nowPlayer = players[0];
+        // 남아 있는 플레이어가 승리한다.
+        playerWon(Arrays.stream(players).filter(player -> player != null).findFirst().orElseThrow(IllegalStateException::new));
+    }
 
+    /**
+     * 플레이어에게 행동을 요청한다.
+     */
+    void requestAction(Player player) {
         // 플레이어가 할 수 있는 행동을 가져옴.
-        ArrayList<Action> actions = getAction(nowPlayer);
+        ArrayList<Action> actions = getAction(player);
 
         // 이 클래스의 allowedActions 필드에 넣는다.
         allowedActions.clear();
@@ -98,25 +111,38 @@ public class WebGame {
         }
 
         // 플레이어에게 행동을 요청한다.
-        String userMessage = "Your Coin: " + nowPlayer.getCoins() + "\n" +
-                "Your Deck: " + nowPlayer.getCards() + "\n" +
+        String userMessage = "Your Coin: " + player.getCoins() + "\n" +
+                "Your Deck: " + player.getCards() + "\n" +
                 "Actions: " + allowedActions;
         Message message = new Message(MessageType.UPDATE, actions, userMessage);
-        simpMessagingTemplate.convertAndSendToUser(nowPlayer.getName(), destination, message);
-
+        simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, message);
     }
 
-    // 컨트롤러에서 유저 액션을 받으면 이 메소드를 호출한다.
+    /**
+     * 게임의 승자를 알린다.
+     * @param player 게임에 승리한 플레이어
+     */
+    void playerWon(Player player) {
+        logger.info("플레이어 {}가 승리했다.", player.getName());
+        this.updateAllPlayers("플레이어 " + player.getName() + "가 승리했다.");
+    }
+
+    /**
+     * 컨트롤러에서 유저가 행동을 요청했을 때 호출되는 메소드
+     * @param username 유저 이름
+     * @param action 유저가 요청한 행동
+     * @return 유저가 요청한 행동이 허용되었는지
+     */
     public boolean makeMove(String username, String action) {
         // 유저가 게임에 참여 중인지 확인한다.
         if (!Arrays.stream(players).anyMatch(player -> player.getName().equals(username))) {
-            logger.info("Player {} is not in game", username);
+            logger.info("플레이어 {}는 게임에 참여하고 있지 않다.", username);
             return false;
         }
 
         // 현재 게임에서 허용된 액션인지 확인한다.
         if (!allowedActions.contains(action)) {
-            logger.info("Player {} made invalid move {}", username, action);
+            logger.info("플레이어 {}가 허용되지 않은 액션 {}을 시도함", username, action);
 
             Message message = new Message(MessageType.ERROR, allowedActions,
                     "잘못된 액션입니다. 현재 가능한 액션 : " + allowedActions);
@@ -126,9 +152,9 @@ public class WebGame {
 
         // 액션을 처리한다.
         // TODO: 액션에 맞는 로직 처리.
-        logger.info("Player {} made move {}", username, action);
+        logger.info("플레이어 {}가 {}을 하려 함.", username, action);
         allowedActions.clear();
-        this.updateAllPlayers("Player " + username + " made move " + action);
+        this.updateAllPlayers("플레이어 " + username + "가 " + action + "을 시도함.");
         return true;
     }
 
