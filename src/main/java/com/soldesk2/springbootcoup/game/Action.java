@@ -39,5 +39,4 @@ public enum Action {
         blockedBy = Collections.unmodifiableSet(objects);
     }
 
-    
 }

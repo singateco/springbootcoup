@@ -69,7 +69,7 @@ public class Player {
 
     @Override
     public String toString() {
-        return "플레이어 {이름: " + this.name + " 코인: " + this.coins + " 카드 : " + this.cards + " }"; 
+        return this.name; 
     }
 
 }

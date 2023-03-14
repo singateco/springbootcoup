@@ -30,6 +30,6 @@ public class Message {
 
     @Override
     public String toString() {
-        return "Message [type=" + type + ", userMessage=" + userMessage + ", content=" + content + "]";
+        return "Message [type=" + type + ", userMessage=" + userMessage + ", content=" + content.toString() + "]";
     }
 }

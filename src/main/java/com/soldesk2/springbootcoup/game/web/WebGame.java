@@ -97,6 +97,8 @@ public class WebGame {
                 // 플레이어가 할 액션을 프론트에 요청한다.
                 Action action = getAction(nowPlayer);
 
+                logger.debug("Action chosen : {}, Is action targeted? {}", action, action.targeted);
+
                 // 타겟이 있는 액션이라면 타겟을 요청하여 받는다
                 Player target = action.targeted ? getTarget(nowPlayer) : null;
 
@@ -189,30 +191,22 @@ public class WebGame {
      * UI를 업데이트한다.
      */
     void update() {
-        stringBuilder.setLength(0);
-        stringBuilder.append("살아있는 플레이어 수 : ");
-        stringBuilder.append(alivePlayers());
-        stringBuilder.append("\n");
-        stringBuilder.append("덱에 남은 카드 수 : ");
-        stringBuilder.append(this.deck.size());
-        stringBuilder.append("\n");
-
-        for (int i = 0; i < players.length; i++) {
-            stringBuilder.append("플레이어 " + i + ": ");
-            stringBuilder.append(players[i].getName());
-            stringBuilder.append(" ");
-            stringBuilder.append("카드 ");
-            stringBuilder.append(players[i].getCardNumbers());
-            stringBuilder.append("개, ");
-            stringBuilder.append("코인 ");
-            stringBuilder.append(players[i].coins);
-            stringBuilder.append("개");
-            stringBuilder.append("\n");
-        }
-
-        String payload = stringBuilder.toString();
-        sendToAllPlayers(payload);
+        Arrays.stream(players).forEach(this::updatePlayer);
     }
+
+
+    void updatePlayer(Player player) {
+        if (player == null) {
+            return;
+        }
+        
+        Update update = new Update(player, players);
+        Message message = new Message(MessageType.UPDATE, update, update.toString());
+
+        sendMessage(player, message);
+    }
+
+
 
     boolean doAction(Action action, Player player, Player target) throws InterruptedException {
         return doAction(action, action.card, player, target);
@@ -265,6 +259,8 @@ public class WebGame {
     }
 
     private void handleAction(Action action, Player player, Player target) throws InterruptedException {
+        logger.debug("Action {} by {} on {}", action, player, target);
+
         switch (action) {
             case Income:
                 player.coins++;
@@ -403,6 +399,7 @@ public class WebGame {
     private <T> T getChoice(Player player, T[] choices, String prompt) throws InterruptedException {
         // TODO: JSON 형식으로 메시지를 보내도록 수정.
 
+        logger.debug("Getting Choice from player {}... options: {}. prompt: {}", player, choices, prompt);
         String[] choicesString = Arrays.stream(choices).map(Object::toString).toArray(String[]::new);
 
         Message message = new Message(MessageType.CHOICE, choicesString, prompt);
@@ -431,6 +428,7 @@ public class WebGame {
 
             for (int i = 0; i < choices.length; i++) {
                 if (choices[i].toString().equals(response)) {
+                    logger.debug("Choice from player {} is {}", player, choices[i]);
                     return choices[i];
                 }
             }
@@ -456,7 +454,12 @@ public class WebGame {
      * @param obj    전달할 메시지
      */
     void sendMessage(Player player, Object obj) {
-        logger.info("플레이어 {}에게 메시지를 전달함. 메시지: {}", player.getName(), obj);
+        if (obj == null) {
+            logger.warn("플레이어 {}에게 전달할 메시지가 null임.", player.getName());
+            return;
+        }
+
+        logger.info("플레이어 {}에게 메시지를 전달함. 메시지: {}", player.getName(), obj.toString());
         simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, obj);
     }
 
@@ -621,4 +624,43 @@ public class WebGame {
         // 모든 Future가 완료되었지만 Predicate가 true인 결과가 없으면 null을 반환한다.
         return null;
     }
+
+    
+    private static class Update {
+        public Card[] localPlayerCards;
+        public PlayerState[] players;
+
+        public Update(Player localPlayer, Player[] players) {
+            this.localPlayerCards = localPlayer.getCards().toArray(new Card[0]);
+            this.players = Arrays.stream(players)
+                                 .filter(Objects::nonNull)
+                                 .map(PlayerState::new)
+                                 .toArray(PlayerState[]::new);
+        }
+
+        @Override
+        public String toString() {
+            String message = "";
+            message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
+
+            for (int i = 0; i < players.length; i++) {
+                message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, " + players[i].cardNumbers + " cards) ";
+            }
+
+            return message;
+        }
+    }
+
+    private static class PlayerState {
+        public String name;
+        public int coins;
+        public int cardNumbers;
+
+        public PlayerState(Player player) {
+            this.name = player.getName();
+            this.coins = player.coins;
+            this.cardNumbers = player.getCardNumbers();
+        }
+    }
+
 }
