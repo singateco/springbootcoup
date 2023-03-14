@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Player {
-    private int coins;
+    public int coins;
     private final String name;
     private ArrayList<Card> cards;
 
@@ -30,14 +30,6 @@ public class Player {
 
     public int getCardNumbers() {
         return this.cards.size();
-    }
-
-    public int getCoins() {
-        return this.coins;
-    }
-
-    public void setCoins(int coins) {
-        this.coins = coins;
     }
 
     public String getName() {
