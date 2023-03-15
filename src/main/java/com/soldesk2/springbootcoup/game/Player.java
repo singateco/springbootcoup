@@ -22,7 +22,10 @@ public class Player {
 
     public void removeCard(Card card) throws IllegalArgumentException {
         if (cards.contains(card)) {
-            cards.remove(card);
+            for(int i=0; i<cards.size(); i++){
+                cards.remove(cards.get(i));
+                break;
+            }
         } else {
             throw new IllegalArgumentException("플레이어 " + this.name + "에게 카드 " + card + "가 없습니다.");
         }
