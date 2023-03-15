@@ -4,14 +4,14 @@ import java.security.Principal;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.HashMap;
 import java.util.Map.Entry;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
@@ -25,7 +25,6 @@ import ch.qos.logback.classic.Logger;
 public class WebGameController {
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
     private final HashMap<String, Lobby> lobbyList = new HashMap<>();
-    private ExecutorService executorService = Executors.newCachedThreadPool();
 
     @Autowired
     Gson gson;
@@ -37,6 +36,21 @@ public class WebGameController {
         // 로거 설정
         this.logger.setLevel(Level.DEBUG);
     }
+
+    @MessageMapping("/chat/{lobbyName}")
+    @SendTo("/topic/chat/{lobbyName}")
+    public Message chat(@DestinationVariable(value = "lobbyName") String lobbyName, Principal principal, @Payload String message) {
+        String username = principal.getName();
+        
+        //logger.debug("Message recieved: {} from: {}", message, username);
+
+        ChatPayload sendingPayload = new ChatPayload();
+        sendingPayload.setSender(username);
+        sendingPayload.setMessage(message);
+
+        return new Message(MessageType.CHAT, sendingPayload);
+    }
+
 
     @MessageMapping("/game")
     @SendToUser("/lobby")
