@@ -62,6 +62,9 @@ public class WebGame {
     public void play(String[] playerNames) {
         this.playerNames = playerNames;
 
+        Message message = new Message(MessageType.UPDATE, "게임 시작", "게임 시작");
+        sendToAllPlayers(message);
+
         int numberOfPlayers = playerNames.length;
         this.players = new Player[numberOfPlayers];
 
@@ -261,7 +264,7 @@ public class WebGame {
                 sacrificeCard(player);
 
             } else {
-                log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player);
+                log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
                 sacrificeCard(counterAction.player);
 
                 // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
@@ -411,6 +414,8 @@ public class WebGame {
         if (player.coins >= 7) {
             options.add(Action.Coup);
         }
+
+        options.add(Action.Tax);
 
         if (player.coins >= 3) {
             options.add(Action.Assassinate);
