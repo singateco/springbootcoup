@@ -260,6 +260,10 @@ public class WebGame {
             boolean lying = !player.hasCard(card);
 
             if (lying) {
+                if(action == Action.ForeignAid){
+                    log("%s의 블록 성공! %s는 ForeignAid를 사용하지 못한다.", counterAction.player, player);
+                    return false;
+                }
                 log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, target);
                 sacrificeCard(player);
 
@@ -561,14 +565,14 @@ public class WebGame {
             message = String.format("%s는 %s를 하기 위해 %s를 가지고 있다고 주장한다.", player.getName(), action.name(), card.name());
             if (target != null) {
                 // 타겟이 있는 액션인 경우 타겟을 보여준다.
-                message += String.format("%n목표 : %s", target.getName());
+                message.concat(String.format("%n목표 : %s", target.getName()));
             }
         } else {
             // 카드를 사용하지 않는 액션
             message = String.format("%s는 %s를 하려고 한다.", player.getName(), action.name());
         }
 
-        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);
+        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);           
 
         // 원조만이 블락당할 수 있다.
         if (action == Action.ForeignAid) {
@@ -656,7 +660,7 @@ public class WebGame {
             if (Thread.interrupted()) {
                 throw new InterruptedException();
             }
-
+            
             for (Iterator<Future<T>> iterator = futures.iterator(); iterator.hasNext();) {
                 Future<T> future = iterator.next();
                 // Future가 완료되었으면 결과를 반환한다.
