@@ -83,7 +83,7 @@ public class WebGameController {
         }
         
         
-        return lobbyName + "의 게임을 시작함.";
+        return null;
     }
 
     @MessageMapping("/showallgame")
