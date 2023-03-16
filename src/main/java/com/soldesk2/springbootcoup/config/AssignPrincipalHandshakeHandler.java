@@ -38,6 +38,6 @@ public class AssignPrincipalHandshakeHandler extends DefaultHandshakeHandler {
                 new RandomStringGenerator.Builder()
                     .withinRange('0', 'z')
                     .filteredBy(CharacterPredicates.LETTERS, CharacterPredicates.DIGITS).build();
-        return randomStringGenerator.generate(8);
+        return randomStringGenerator.generate(5);
     }
 }
