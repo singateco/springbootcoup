@@ -1,9 +1,7 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.HashMap;
-import java.util.Map.Entry;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,8 +61,7 @@ public class WebGameController {
         }
 
         Lobby lobby = lobbyList.get(lobbyName);
-        Entry<String, String> pair = new SimpleEntry<>(username, message);
-        lobby.game.playerResponseQueue.add(pair);
+        lobby.game.playerActionQueueMap.get(username).add(message);
 
         logger.info("로비 {}의 메시지 큐에 유저 {}의 메시지 {} 저장", lobbyName, username, message);
         return "로비명 " + lobbyName + "에 메시지 전송 완료";
