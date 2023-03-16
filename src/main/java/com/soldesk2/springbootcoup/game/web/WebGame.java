@@ -8,8 +8,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -37,7 +37,8 @@ public class WebGame {
     private SimpMessagingTemplate simpMessagingTemplate;
 
     private final Random random;
-    public final ConcurrentLinkedQueue<Entry<String, String>> playerResponseQueue = new ConcurrentLinkedQueue<>();
+    public Map<String, Queue<String>> playerActionQueueMap;
+    
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     private static final long ACTION_TIMEOUT_SECONDS = 60;
@@ -54,6 +55,7 @@ public class WebGame {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
         this.destination = destination;
+        this.playerActionQueueMap = new HashMap<>();
 
         logger.setLevel(Level.DEBUG);
         logger.debug("게임 생성됨.");
@@ -83,9 +85,10 @@ public class WebGame {
         // 플레이어 설정
         for (int i = 0; i < numberOfPlayers; i++) {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
+            playerActionQueueMap.put(players[i].getName(), new ConcurrentLinkedQueue<>());
         }
 
-        // TODO: 서버 딜레이 시뮬레이션용 (완성시 삭제)
+
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
@@ -260,13 +263,8 @@ public class WebGame {
             boolean lying = !player.hasCard(card);
 
             if (lying) {
-                if(action == Action.ForeignAid){
-                    log("%s의 블록 성공! %s는 ForeignAid를 사용하지 못한다.", counterAction.player, player);
-                    return false;
-                }
                 log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, target);
                 sacrificeCard(player);
-
             } else {
                 log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
                 sacrificeCard(counterAction.player);
@@ -447,16 +445,15 @@ public class WebGame {
 
         Message message = new Message(MessageType.CHOICE, choicesString, prompt);
         sendMessage(player, message);
-
+        
         Future<String> futureResponse = executorService.submit(
                 () -> {
                     try {
                         while (true) {
-                            Entry<String, String> s = playerResponseQueue.poll();
-                            if (s != null && s.getKey().equals(player.getName())) {
-                                return s.getValue();
+                            String s = playerActionQueueMap.get(player.getName()).poll();
+                            if (s != null) {
+                                return s;
                             }
-                            Thread.sleep(150);
                         }
                     } catch (Exception e) {
                         logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
