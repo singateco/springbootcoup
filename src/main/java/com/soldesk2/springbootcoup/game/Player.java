@@ -49,6 +49,7 @@ public class Player {
         return this.cards.contains(card);
     }
 
+
     public Card getCard(Card card){
         return card;
     }

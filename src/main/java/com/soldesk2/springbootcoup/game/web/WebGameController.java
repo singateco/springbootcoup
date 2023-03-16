@@ -1,6 +1,7 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.HashMap;
 
 import org.slf4j.LoggerFactory;
@@ -137,6 +138,29 @@ public class WebGameController {
 
         logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
         return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(); 
+    }
+
+    @MessageMapping("/chat")
+    @SendToUser("/lobby")
+    public String chatinroom(Principal principal, @Payload String payload, @Header(defaultValue = "missingHeader") String lobbyName){
+
+        if (lobbyName.equals("missingHeader")) {
+            logger.info("유저 {}가 로비명 없이 로비 생성하려함", principal.getName());
+            return "로비명을 입력해주세요.";
+        }
+
+        System.out.println(payload);
+
+        String message = principal.getName() + ": " + payload;
+
+        Lobby lobby = lobbyList.get(lobbyName);
+        List<String> players = lobby.playerNames;
+
+        for (int i = 0; i < players.size(); i++ ) {
+            simpMessagingTemplate.convertAndSendToUser(players.get(i), "/lobby", message);
+        }
+        
+        return principal.getName() + ": " + payload;
     }
 
 }

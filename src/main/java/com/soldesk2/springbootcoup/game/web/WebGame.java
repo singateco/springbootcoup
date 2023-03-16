@@ -394,6 +394,7 @@ public class WebGame {
         if (action == Action.Coup) {
             player.coins -= 7;
         }
+
     }
 
     /**
@@ -437,6 +438,7 @@ public class WebGame {
      * @param prompt  선택지를 출력할 때 출력할 메시지
      * @return 플레이어가 선택한 값.
      */
+
     private <T> T getChoice(Player player, T[] choices, String prompt) throws InterruptedException {
         // TODO: JSON 형식으로 메시지를 보내도록 수정.
 
@@ -630,6 +632,7 @@ public class WebGame {
         // 아무 플레이어도 카운터하지 않았다면 null을 반환한다.
         return null;
     }
+
 
     private <T> Future<T> getChoiceAsync(Player player, T[] choices, String prompt) {
         return executorService.submit(() -> getChoice(player, choices, prompt));
