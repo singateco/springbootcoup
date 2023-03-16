@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Player {
-    private int coins;
+    public int coins;
     private final String name;
     private ArrayList<Card> cards;
 
@@ -32,14 +32,6 @@ public class Player {
         return this.cards.size();
     }
 
-    public int getCoins() {
-        return this.coins;
-    }
-
-    public void setCoins(int coins) {
-        this.coins = coins;
-    }
-
     public String getName() {
         return this.name;
     }
@@ -56,18 +48,7 @@ public class Player {
     public boolean hasCard(Card card) {
         return this.cards.contains(card);
     }
-    
-    public List<Card> getCardList(){
-        List<Card> cardList = new ArrayList<> ();
 
-        for(int i=0; i<cards.size(); i++){
-            if(cards.get(i) != null){
-                cardList.add(cards.get(i));
-            }
-        }
-        
-        return cardList;
-    }
 
     public Card getCard(Card card){
         return card;
@@ -75,7 +56,7 @@ public class Player {
 
     @Override
     public String toString() {
-        return "플레이어 {이름: " + this.name + " 코인: " + this.coins + " 카드 : " + this.cards + " }"; 
+        return this.name; 
     }
 
 }

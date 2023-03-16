@@ -3,14 +3,14 @@ package com.soldesk2.springbootcoup.game.web;
 import java.security.Principal;
 import java.util.List;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
@@ -24,7 +24,6 @@ import ch.qos.logback.classic.Logger;
 public class WebGameController {
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
     private final HashMap<String, Lobby> lobbyList = new HashMap<>();
-    private ExecutorService executorService = Executors.newCachedThreadPool();
 
     @Autowired
     Gson gson;
@@ -35,6 +34,38 @@ public class WebGameController {
     public WebGameController() {
         // 로거 설정
         this.logger.setLevel(Level.DEBUG);
+    }
+
+    @MessageMapping("/chat/{lobbyName}")
+    @SendTo("/topic/chat/{lobbyName}")
+    public Message chat(@DestinationVariable(value = "lobbyName") String lobbyName, Principal principal, @Payload String message) {
+        String username = principal.getName();
+        
+        //logger.debug("Message recieved: {} from: {}", message, username);
+
+        ChatPayload sendingPayload = new ChatPayload();
+        sendingPayload.setSender(username);
+        sendingPayload.setMessage(message);
+
+        return new Message(MessageType.CHAT, sendingPayload);
+    }
+
+
+    @MessageMapping("/game")
+    @SendToUser("/lobby")
+    public String gameInput(Principal principal, @Header String lobbyName, @Payload String message) {
+        String username = principal.getName();
+
+        if (!lobbyList.containsKey(lobbyName)) {
+            logger.info("유저 {}가 존재하지 않는 로비 {} 게임에 메시지 전하려고 함. 메시지: {}", username, lobbyName, message);
+            return "로비명 " + lobbyName + "는 존재하지 않습니다.";
+        }
+
+        Lobby lobby = lobbyList.get(lobbyName);
+        lobby.game.playerActionQueueMap.get(username).add(message);
+
+        logger.info("로비 {}의 메시지 큐에 유저 {}의 메시지 {} 저장", lobbyName, username, message);
+        return "로비명 " + lobbyName + "에 메시지 전송 완료";
     }
 
 
@@ -64,33 +95,7 @@ public class WebGameController {
         }
         
         
-        return lobbyName + "의 게임을 시작함.";
-    }
-
-    @MessageMapping("/input")
-    @SendToUser("/lobby")
-    public String input(Principal principal, @Header String lobbyName, @Payload String payload) {
-        if (!lobbyList.containsKey(lobbyName)) {
-            logger.info("존재하지 않는 로비 {}에 유저가 입력함", lobbyName);
-            return "존재하지 않는 로비에 입력함";
-        }
-
-        Lobby lobby = lobbyList.get(lobbyName);
-        WebGame game = lobby.getGame();
-
-        if (game == null) {
-            logger.info("게임이 시작되지 않은 로비 {}에 유저가 입력함", lobbyName);
-            return "게임이 시작되지 않은 로비에 입력함";
-        }
-
-        logger.info("로비 {}에 유저 {}가 입력함", lobbyName, principal.getName());
-            
-        if (game.makeMove(principal.getName(), payload)) {
-            return "입력 성공";
-        } else {
-            return "입력 실패";
-        }
-
+        return null;
     }
 
     @MessageMapping("/showallgame")

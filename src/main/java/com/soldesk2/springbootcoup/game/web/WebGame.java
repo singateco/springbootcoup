@@ -2,17 +2,30 @@ package com.soldesk2.springbootcoup.game.web;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.soldesk2.springbootcoup.game.Action;
-import com.soldesk2.springbootcoup.game.Action.ActionType;
 import com.soldesk2.springbootcoup.game.Card;
+import com.soldesk2.springbootcoup.game.CounterAction;
 import com.soldesk2.springbootcoup.game.Player;
 
 import ch.qos.logback.classic.Level;
@@ -22,28 +35,39 @@ public class WebGame {
 
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
     private SimpMessagingTemplate simpMessagingTemplate;
-    
-    private final Random random;
-    private StringBuilder stringBuilder;
 
-    protected final Player[] players;
-    private final List<Card> deck;
+    private final Random random;
+    public Map<String, Queue<String>> playerActionQueueMap;
+    
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
+
+    private static final long ACTION_TIMEOUT_SECONDS = 60;
+
+    // 게임 시작시 접속한 플레이어들 이름 목록
+    String[] playerNames;
+
+    // 살아있는 플레이어 목록
+    private Player[] players;
+    private List<Card> deck;
     private final String destination;
 
-    private final List<String> allowedActions;
-
-    public WebGame(String[] playerNames, String destination, SimpMessagingTemplate simpMessagingTemplate) {
-        logger.setLevel(Level.DEBUG);
-        logger.debug("게임 설정중... 플레이어 이름 : {} 경로 : {}", playerNames, destination);
-
-        this.allowedActions = new ArrayList<>();
-        this.stringBuilder = new StringBuilder();
+    public WebGame(String destination, SimpMessagingTemplate simpMessagingTemplate) {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
         this.destination = destination;
+        this.playerActionQueueMap = new HashMap<>();
+
+        logger.setLevel(Level.DEBUG);
+        logger.debug("게임 생성됨.");
+    }
+
+    public void play(String[] playerNames) {
+        this.playerNames = playerNames;
+
+        Message message = new Message(MessageType.UPDATE, "게임 시작", "게임 시작");
+        sendToAllPlayers(message);
 
         int numberOfPlayers = playerNames.length;
-
         this.players = new Player[numberOfPlayers];
 
         // 카드마다 3장씩 덱의 크기를 설정
@@ -61,101 +85,100 @@ public class WebGame {
         // 플레이어 설정
         for (int i = 0; i < numberOfPlayers; i++) {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
+            playerActionQueueMap.put(players[i].getName(), new ConcurrentLinkedQueue<>());
         }
 
-        play();
-    }
 
-    public void play() {
-        // TODO: 서버 딜레이 시뮬레이션용 (완성시 삭제)
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        update();
+        try {
+            update();
+            int playerIndex = 0;
 
-        int playerIndex = 0;
+            // 게임이 끝날 때까지 반복
+            while (alivePlayers() > 1) {
+                // 행동할 플레이어를 정한다.
+                Player nowPlayer = players[playerIndex];
+                // 플레이어가 할 액션을 프론트에 요청한다.
+                Action action = getAction(nowPlayer);
 
-        // 게임이 끝날 때까지 반복
-        while (alivePlayers() > 1) {
-            // 행동할 플레이어를 정한다.
-            Player nowPlayer = players[playerIndex];
+                logger.debug("Action chosen : {}, Is action targeted? {}", action, action.targeted);
 
-            requestAction(nowPlayer);
+                // 타겟이 있는 액션이라면 타겟을 요청하여 받는다
+                Player target = action.targeted ? getTarget(nowPlayer) : null;
 
+                if (target != null) {
+                    if (action.card != null) {
+                        log("%s가 카드 %s를 사용하여 %s에게 %s를 함", nowPlayer, action.card, target, action);
+                    } else {
+                        log("%s가 %s에게 %s를 함", nowPlayer, target, action);
+                    }
+                } else {
+                    if (action.card != null) {
+                        log("%s가 카드 %s를 사용하여 %s를 함", nowPlayer, action.card, action);
+                    } else {
+                        log("%s가 %s를 함", nowPlayer, action);
+                    }
+                }
 
-            // 행동할 플레이어를 다음 플레이어로 변경한다.
-            do {
-                playerIndex = (playerIndex + 1) % players.length;
-            } while (players[playerIndex] == null);
+                // 타겟이 있을지 모르는 액션을 실행한다.
+                doAction(action, nowPlayer, target);
 
+                // 카드가 0인 플레이어를 제거한다.
+                for (int i = 0; i < players.length; i++) {
+                    if (players[i] != null && players[i].getCardNumbers() == 0) {
+                        log("플레이어 %s가 사망했다.", players[i].getName());
+                        players[i] = null;
+                    }
+                }
+
+                update();
+
+                // 행동할 플레이어를 다음 플레이어로 변경한다.
+                do {
+                    playerIndex = (playerIndex + 1) % players.length;
+                } while (players[playerIndex] == null);
+
+            }
+
+            // 남아 있는 플레이어가 승리한다.
+            playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst()
+                    .orElseThrow(IllegalStateException::new));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-
-        // 남아 있는 플레이어가 승리한다.
-        playerWon(Arrays.stream(players).filter(player -> player != null).findFirst().orElseThrow(IllegalStateException::new));
     }
 
-    /**
-     * 플레이어에게 행동을 요청한다.
-     */
-    void requestAction(Player player) {
-        // 플레이어가 할 수 있는 행동을 가져옴.
-        ArrayList<Action> actions = getAction(player);
+    Player getTarget(Player player) throws InterruptedException {
+        List<Player> options = new ArrayList<>(Arrays.asList(players));
 
-        // 이 클래스의 allowedActions 필드에 넣는다.
-        allowedActions.clear();
-        for (Action action : actions) {
-            allowedActions.add(action.getActionType().toString());
-        }
+        // 죽은 플레이어는 대상이 될 수 없음
+        options.removeIf(Objects::isNull);
+        // 자기 자신은 대상이 될 수 없음
+        options.remove(player);
 
-        // 플레이어에게 행동을 요청한다.
-        String userMessage = "Your Coin: " + player.getCoins() + "\n" +
-                "Your Deck: " + player.getCards() + "\n" +
-                "Actions: " + allowedActions;
-        Message message = new Message(MessageType.UPDATE, actions, userMessage);
-        simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, message);
+        return getChoice(player, options.toArray(new Player[0]), "대상을 선택하세요.");
+    }
+
+    void log(String format, Object... args) {
+        String logMessage = String.format(format, args);
+        logger.info(logMessage);
+        Message message = new Message(MessageType.LOG, logMessage, logMessage);
+        sendToAllPlayers(message);
     }
 
     /**
      * 게임의 승자를 알린다.
+     * 
      * @param player 게임에 승리한 플레이어
      */
     void playerWon(Player player) {
         logger.info("플레이어 {}가 승리했다.", player.getName());
-        this.updateAllPlayers("플레이어 " + player.getName() + "가 승리했다.");
-    }
-
-    /**
-     * 컨트롤러에서 유저가 행동을 요청했을 때 호출되는 메소드
-     * @param username 유저 이름
-     * @param action 유저가 요청한 행동
-     * @return 유저가 요청한 행동이 허용되었는지
-     */
-    public boolean makeMove(String username, String action) {
-        // 유저가 게임에 참여 중인지 확인한다.
-        if (!Arrays.stream(players).anyMatch(player -> player.getName().equals(username))) {
-            logger.info("플레이어 {}는 게임에 참여하고 있지 않다.", username);
-            return false;
-        }
-
-        // 현재 게임에서 허용된 액션인지 확인한다.
-        if (!allowedActions.contains(action)) {
-            logger.info("플레이어 {}가 허용되지 않은 액션 {}을 시도함", username, action);
-
-            Message message = new Message(MessageType.ERROR, allowedActions,
-                    "잘못된 액션입니다. 현재 가능한 액션 : " + allowedActions);
-            simpMessagingTemplate.convertAndSendToUser(username, destination, message);
-            return false;
-        }
-
-        // 액션을 처리한다.
-        // TODO: 액션에 맞는 로직 처리.
-        logger.info("플레이어 {}가 {}을 하려 함.", username, action);
-        allowedActions.clear();
-        this.updateAllPlayers("플레이어 " + username + "가 " + action + "을 시도함.");
-        return true;
+        this.sendToAllPlayers("플레이어 " + player.getName() + "가 승리했다.");
     }
 
     /**
@@ -178,733 +201,312 @@ public class WebGame {
      * UI를 업데이트한다.
      */
     void update() {
-        stringBuilder.setLength(0);
-        stringBuilder.append("살아있는 플레이어 수 : ");
-        stringBuilder.append(alivePlayers());
-        stringBuilder.append("\n");
-        stringBuilder.append("덱에 남은 카드 수 : ");
-        stringBuilder.append(this.deck.size());
-        stringBuilder.append("\n");
+        Arrays.stream(players).forEach(this::updatePlayer);
+    }
 
-        for (int i = 0; i < players.length; i++) {
-            stringBuilder.append("플레이어 " + i + ": ");
-            stringBuilder.append(players[i].getName());
-            stringBuilder.append(" ");
-            stringBuilder.append("카드 ");
-            stringBuilder.append(players[i].getCardNumbers());
-            stringBuilder.append("개, ");
-            stringBuilder.append("코인 ");
-            stringBuilder.append(players[i].getCoins());
-            stringBuilder.append("개");
-            stringBuilder.append("\n");
+    void updatePlayer(Player player) {
+        if (player == null) {
+            return;
         }
 
-        String payload = stringBuilder.toString();
-        updateAllPlayers(payload);
+        Update update = new Update(player, players);
+        Message message = new Message(MessageType.UPDATE, update, update.toString());
+
+        sendMessage(player, message);
+    }
+
+    boolean doAction(Action action, Player player, Player target) throws InterruptedException {
+        return doAction(action, action.card, player, target);
     }
 
     /**
-     * 사용 가능한 액션을 반환한다.
-     * 
-     * @param player 액션을 하는 플레이어.
+     * 액션을 실행한다.
+     * @param action 액션
+     * @param card 카드 
+     * @param player 플레이어
+     * @param target 타겟
+     * @return 액션이 성공적으로 실행되었는지 여부
+     * @throws InterruptedException
      */
-    ArrayList<Action> getAction(Player player) {
-        ArrayList<Action> actions = new ArrayList<>();
+    boolean doAction(Action action, Card card, Player player, Player target) throws InterruptedException {
+        // 돈이 필요한 액션은 돈을 먼저 낸다.
+        payCost(action, player);
+        CounterAction counterAction = getCounterAction(action, card, player, target);
 
-        // 10코인 이상일 경우 쿠밖에 못함
-        if (player.getCoins() >= 10) {
-            actions.add(new Action(ActionType.Coup));
-            return actions;
+        // 카운터 액션이 없다면 바로 액션을 실행한다.
+        if (counterAction == null) {
+            handleAction(action, player, target);
+            return true;
         }
 
-        actions.add(new Action(ActionType.Income));
-        actions.add(new Action(ActionType.ForeignAid));
+        // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
 
-        // 3코인 이상이면 암살 가능
-        if (player.getCoins() >= 3) {
-            actions.add(new Action(ActionType.Assassinate, player.hasCard(Card.Assassin)));
+        // 블록이 가능하다면 블록을 먼저 시도한다.
+        if (counterAction.isBlock) {
+            log("%s가 %s로 블록함", counterAction.player, counterAction.card);
+
+            // 이 블록도 챌린지될수 있음
+            if (doAction(Action.Block, counterAction.card, counterAction.player, player)) {
+                log("블록 성공!");
+                return false;
+
+            } else {
+                log("블록 실패!");
+                // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
+                if (target != null && target.getCardNumbers() == 0)
+                    return false;
+            }
+
+        } else {
+            log("%s가 챌린지한다", counterAction.player);
+
+            boolean lying = !player.hasCard(card);
+
+            if (lying) {
+                log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, target);
+                sacrificeCard(player);
+            } else {
+                log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
+                sacrificeCard(counterAction.player);
+
+                // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
+                player.removeCard(card);
+                deck.add(card);
+                shuffleDeck();
+                player.addCard(drawOne());
+            }
+
+            if (lying || (target != null && target.getCardNumbers() == 0)) {
+                return false;
+            }
         }
 
-        // 7코인 이상이면 쿠 가능
-        if (player.getCoins() >= 7) {
-            actions.add(new Action(ActionType.Coup));
-        }
-
-        // 직업 카드는 bluff인지 계산
-        actions.add(new Action(ActionType.Tax, player.hasCard(Card.Duke)));
-        actions.add(new Action(ActionType.Steal, player.hasCard(Card.Captain)));
-        actions.add(new Action(ActionType.Exchange, player.hasCard(Card.Ambassador)));
-
-        return actions;
+        handleAction(action, player, target);
+        return true;
     }
 
-    /**
-     * 선택 액션을 수행, blockAction에 따라 액션 차단 가능
-     * 
-     * @param player 액션을 선택한 플레이어
-     * @param action 실행시킬 액션
-     * @param card   액션에 사용되는 카드
-     */
-    void executeAction(Player player, Action action, Card card) {
-        ActionType type = action.getActionType();
+    private void handleAction(Action action, Player player, Player target) throws InterruptedException {
+        logger.debug("Action {} by {} on {}", action, player, target);
 
-        switch (type) {
+        switch (action) {
             case Income:
-                player.setCoins(player.getCoins() + 1);
+                player.coins++;
                 break;
 
             case ForeignAid:
-                if (!blockAction(player, action, card))
-                    player.setCoins(player.getCoins() + 2);
+                player.coins += 2;
                 break;
 
             case Tax:
-                if (!blockAction(player, action, card))
-                    player.setCoins(player.getCoins() + 3);
-                break;
-
-            case Coup:
-                player.setCoins(player.getCoins() - 7);
-                cardDown(getTarget(player));
+                player.coins += 3;
                 break;
 
             case Assassinate:
-                player.setCoins(player.getCoins() - 3);
-                Player target_kill = getTarget(player);
-                if (!blockAction(player, target_kill, action, card)) {
-                    if (target_kill == null) {
-                        break;
-                    }
-                    cardDown(target_kill);
-                }
+            case Coup:
+                sacrificeCard(target);
                 break;
 
             case Exchange:
-                if (!blockAction(player, action, card))
-                    changeCard(player);
+                exchange(player);
                 break;
 
             case Steal:
-                Player target_steal = getStealTarget(player);
-                if (!blockAction(player, target_steal, action, card)) {
-                    if (target_steal == null) {
-                        break;
-                    }
-                    stealCoin(player, target_steal);
-                }
+                int removed = Math.min(Objects.requireNonNull(target).coins, 2);
+                target.coins -= removed;
+                player.coins += removed;
+                break;
+
+            case Block:
                 break;
         }
+    }
 
+    private void exchange(Player player) throws InterruptedException {
+        // 지금 플레이어 카드의 복사본을 만든다.
+        ArrayList<Card> copy = new ArrayList<>(player.getCards());
+
+        // 2장을 더 뽑는다.
+        copy.add(drawOne());
+        copy.add(drawOne());
+
+        // 프론트에 어떤 카드를 버릴지 선택하게 한다.
+        ArrayList<Card> toKeep = doExchange(player, copy);
+        player.setCards(toKeep);
+
+        // 버린 카드를 덱에 넣고 섞는다.
+        copy.removeAll(toKeep);
+        deck.addAll(copy);
+        shuffleDeck();
     }
 
     /**
-     * 선택한 유저를 제외한 모든 유저의 리스트를 가져오는 메서드
+     * 카드를 2장 버리게 한다.
      * 
-     * @param palyer 리스트에서 제외할 플레이어
-     * @return 선택한 플레이어 이외의 모든 플레이어 List
+     * @param player 플레이어
+     * @param cards  카드를 2장 버리게 할 카드들
+     * @return 버린 카드를 제외한 카드들
      */
-    List<Player> getotherplayers(Player player) {
-        List<Player> otherplayers = new ArrayList<>(Arrays.asList(players));
-        otherplayers.removeAll(null);
-        otherplayers.remove(player);
+    private ArrayList<Card> doExchange(Player player, ArrayList<Card> cards) throws InterruptedException {
+        // 카드를 2장 버리게 한다.
 
-        return otherplayers;
-    }
+        ArrayList<Card> copy = new ArrayList<>(cards);
 
-    /**
-     * 사망한 플레이어와 자신을 제외하여 타겟으로 설정 가능한 플레이어들의 배열 생성 후
-     * 타겟 선택하는 메서드로 이동
-     * 
-     * @param player 타겟이 존재하는 액션을 사용하여 액션에 대한 타겟을 선택하는 플레이어
-     * @return 선택 플레이어, 선택가능한 타겟 배열, 메세지 getChoiceTarget으로 전송하여 타겟 선택, 선택한 플레이어를 반환
-     */
-    Player getTarget(Player player) {
-        List<Player> target = getotherplayers(player);
-        return getChoiceTarget(player, target.toArray(new Player[0]), "대상을 지정해주세요");
-    }
-
-    /**
-     * 코인이 2개 이상인 플레이어들의 배열 생성 후 타겟 설정
-     * 
-     * @param player Steal액션을 사용하는 플레이어
-     * @return 생성한 배열을 타겟 설정 메서드로 이동 하여 타겟 설정
-     */
-    Player getStealTarget(Player player) {
-        List<Player> otherplayers = new ArrayList<>(Arrays.asList(players));
-        otherplayers.removeAll(null);
-        otherplayers.remove(player);
-        for (int i = 0; i < otherplayers.size(); i++) {
-            if (otherplayers.get(i).getCoins() >= 2) {
-                otherplayers.remove(i);
-            }
+        for (int i = 1; i <= 2; i++) {
+            Card card = getChoice(player, copy.toArray(new Card[0]), "버릴 카드를 선택하세요 2장 중" + i + "번째");
+            copy.remove(card);
         }
 
-        return getChoiceTarget(player, otherplayers.toArray(new Player[0]), "대상을 지정해주세요");
+        return copy;
+    }
+
+    /**
+     * 플레이어가 카드를 1장 버리게 한다.
+     * @param player 카드를 버리게 할 플레이어
+     * @throws InterruptedException
+     */
+    private void sacrificeCard(Player player) throws InterruptedException {
+        Card card = getCardToSacrifice(player);
+        log("%s가 %s를 버림", player, card);
+        player.removeCard(card);
+    }
+
+    /**
+     * 플레이어에게 버릴 카드를 선택하게 한다.
+     * @param player 카드를 선택하게 할 플레이어
+     * @return 선택한 카드
+     * @throws InterruptedException
+     */
+    private Card getCardToSacrifice(Player player) throws InterruptedException {
+        return getChoice(player, player.getCards().toArray(new Card[0]), "버릴 카드를 선택하세요");
+    }
+
+    /**
+     * 액션에 필요한 돈을 낸다.
+     * 
+     * @param action 액션
+     * @param player 액션을 취하는 플레이어
+     */
+    void payCost(Action action, Player player) {
+        if (action == Action.Assassinate) {
+            player.coins -= 3;
+        }
+
+        if (action == Action.Coup) {
+            player.coins -= 7;
+        }
 
     }
 
     /**
-     * 선택할 수 있는 플레이어 중 타겟 선택
+     * 플레이어가 액션을 선택한다.
      * 
-     * @param player  타겟을 선택하는 플레이어
-     * @param choices 고를 수 있는 플레이어의 배열
-     * @param message 선택 메세지
-     * @return 선택한 플레이어를 반환
+     * @param player 플레이어
+     * @return 선택한 액션
      */
-    Player getChoiceTarget(Player player, Player[] choices, String message){
-        for (int i = 0; i < choices.length; i++) {
-            allowedActions.add(choices[i].toString());
+    Action getAction(Player player) throws InterruptedException {
+        ArrayList<Action> options = new ArrayList<>();
+
+        // 코인 10개 이상일시 쿠만 가능
+        if (player.coins >= 10) {
+            options.add(Action.Coup);
+            return getChoice(player, options.toArray(new Action[0]), "액션을 고르시오");
         }
 
-        Message userMessage = new Message(MessageType.CHOICE, allowedActions, message);
+        options.add(Action.Income);
+        options.add(Action.ForeignAid);
+        if (player.coins >= 7) {
+            options.add(Action.Coup);
+        }
 
-        String playername = player.toString();
+        options.add(Action.Tax);
 
-        simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
+        if (player.coins >= 3) {
+            options.add(Action.Assassinate);
+        }
+        options.add(Action.Exchange);
+        options.add(Action.Steal);
+
+        return getChoice(player, options.toArray(new Action[0]), "액션을 고르시오.");
+    }
+
+    /**
+     * 플레이어가 선택할 수 있는 선택지를 출력하고 선택지 중 하나를 선택하도록 한다.
+     * 
+     * @param <T>     선택지의 타입
+     * @param player  선택을 할 플레이어
+     * @param choices 가능한 선택지
+     * @param prompt  선택지를 출력할 때 출력할 메시지
+     * @return 플레이어가 선택한 값.
+     */
+
+    private <T> T getChoice(Player player, T[] choices, String prompt) throws InterruptedException {
+        // TODO: JSON 형식으로 메시지를 보내도록 수정.
+
+        logger.debug("Getting Choice from player {}... options: {}. prompt: {}", player, choices, prompt);
+        String[] choicesString = Arrays.stream(choices).map(Object::toString).toArray(String[]::new);
+
+        Message message = new Message(MessageType.CHOICE, choicesString, prompt);
+        sendMessage(player, message);
         
+        Future<String> futureResponse = executorService.submit(
+                () -> {
+                    try {
+                        while (true) {
+                            String s = playerActionQueueMap.get(player.getName()).poll();
+                            if (s != null) {
+                                return s;
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
+                        return null;
+                    }
 
-        Player result = null;
+                });
 
-        while (result == null) {
-            String getresult = "전달 받은 값";
+        try {
+            String response = futureResponse.get(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
             for (int i = 0; i < choices.length; i++) {
-                if (choices[i].toString().equals(getresult)) result = choices[i];
+                if (choices[i].toString().equals(response)) {
+                    logger.debug("Choice from player {} is {}", player, choices[i]);
+                    return choices[i];
+                }
             }
-            if (result == null) {
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-            }
+
+        } catch (TimeoutException e) {
+            logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
+            futureResponse.cancel(true);
+            return null;
+        } catch (ExecutionException e) {
+            logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
+            futureResponse.cancel(true);
+            return null;
         }
-        allowedActions.clear();
-    
-        return result;
+
+        logger.warn("플레이어 {}로부터 옵션들 {}로부터 올바르지 않은 응답을 받음.", player.getName(), choices);
+        return null;
     }
 
     /**
-     * 암살자, Coup에 의한 카드 버리기 / 도전 의심 블록에서도 사용될 예정
+     * 플레이어에게 메시지를 전달한다.
      * 
-     * @param target 카드를 버리게 되는 플레이어
+     * @param player 메시지를 전달할 플레이어
+     * @param obj    전달할 메시지
      */
-    void cardDown(Player target) {
-
-        
-        List<Card> targetcardlist = target.getCardList();
-        for (int i = 0; i < targetcardlist.size(); i++ ){
-            allowedActions.add(targetcardlist.get(i).toString());
-        }
-        
-        Message userMessage = new Message(MessageType.CHOICE, allowedActions, "버릴 카드 선택");
-        String targetname = target.toString();
-
-        simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-
-        // 값 전달 받은 후
-        Card result = null;
-
-        while (result == null) {
-            String getresult = "전달 받은 값"; // 전달 받은 값
-
-            for (int i = 0; i < targetcardlist.size(); i++) {
-                if (targetcardlist.get(i).toString().equals(getresult)) result = targetcardlist.get(i);
-            }
-            if (result == null) {
-                simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-            }
-        }
-        allowedActions.clear();
-        target.removeCard(result);
-
-        String diedplayeranme = "";
-
-        for (int i = 0; i < players.length; i++) {
-            if (players[i] != null && players[i].getCardNumbers() == 0) {
-                players[i] = null;
-                diedplayeranme = players[i].getName();
-                String userdiedMessage = diedplayeranme + "사망!";
-                simpMessagingTemplate.convertAndSendToUser(diedplayeranme, destination, userdiedMessage);
-            }
+    void sendMessage(Player player, Object obj) {
+        if (obj == null) {
+            logger.warn("플레이어 {}에게 전달할 메시지가 null임.", player.getName());
+            return;
         }
 
-    }
-
-    /**
-     * 외교관에 의한 카드 교체
-     * 
-     * @param player 카드를 교체할 플레이어
-     */
-    void changeCard(Player player) {
-        List<Card> cardlist = player.getCards();
-        cardlist.add(drawOne());
-        cardlist.add(drawOne());
-
-        for (Card card : cardlist) {
-            allowedActions.add(card.toString());
-        }
-
-        int cardsize = player.getCardNumbers();
-
-        String playername = player.toString();
-        Message userMessage = new Message(MessageType.CHOICE, allowedActions, "버릴 카드 2개 선택");
-
-        simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-
-        List<Card> result = new ArrayList<>();
-
-        while (result == null) {
-            List<String> getresult = new ArrayList<>();  // 전달 받은 값
-
-            if (getresult.size() != cardsize) {
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-            }
-            for (int i = 0; i < getresult.size(); i++) {
-                for (int j = 0; j < cardlist.size(); j++) {
-                    if ((cardlist.get(j).toString()).equals(getresult.get(i))) { 
-                        result.add(cardlist.get(j));
-                    }
-                }
-            }
-            if (result == null || result.size() != cardsize) {
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-            }
-
-        }
-        allowedActions.clear();
-
-        for (int i = 0; i < cardlist.size(); i++) {
-            if ((cardlist.get(i)).equals(result.get(0))) {
-                cardlist.remove(cardlist.get(i));
-                break;
-            }
-        }
-
-        if (cardsize == 2) {
-            for (int i = 0; i < cardlist.size(); i++) {
-                if ((cardlist.get(i)).equals(result.get(1))) {
-                    cardlist.remove(cardlist.get(i));
-                    break;
-                }
-            }
-        }
-
-        for (int i = 0; i < cardlist.size(); i++) {
-            addCardToDeck(cardlist.get(i));
-        }
-
-        shuffleDeck();
-
-        player.setCards(result);
-
-    }
-
-    /**
-     * 사령관에 의한 코인 강탈
-     * 
-     * @param player 사령관을 사용한 플레이어
-     */
-    void stealCoin(Player player, Player target) {
-
-        if (target.getCoins() >= 2) {
-            target.setCoins(target.getCoins() - 2);
-            player.setCoins(player.getCoins() + 2);
-        } else {
-            target = getTarget(player);
-        }
-    }
-
-    /**
-     * 타겟이 없는 액션의 경우 null초기화
-     * 
-     * @param player 액션을 실행시킨 플레이어
-     * @param action 실행되는 액션
-     * @param card   액션에 사용되는 카드
-     * @return 카운터 액션 실행하여 카운터에 대한 boolean값 반환
-     */
-    boolean blockAction(Player player, Action action, Card card) {
-        return blockAction(player, null, action, card);
-    }
-
-    /**
-     * 방해 / 의심 / 패스 설정하여 각각 카운터에 대한 액션 수행
-     * 
-     * @param player 액션을 실행시킨 플레이어
-     * @param target 액션의 타겟 (타겟이 존재하지 않는 액션일 경우 null)
-     * @param action 실행되는 액션
-     * @param card   액션에 사용되는 카드
-     * @return 카운터 선택과 카드 보유 여부에 따른 카운터 성공 / 실패 반환 -> true(성공, 액션 차단)
-     */
-    boolean blockAction(Player player, Player target, Action action, Card card) {
-
-        ActionType type = action.getActionType();
-        Boolean bluff = action.getlegitMove();
-
-        String targetname = target.toString();
-        String playername = player.toString();
-        Message userMessage = null;
-
-        String choice = ""; // 의심 or 방해 선택 여부 
-        
-
-        // 액션이 ForeignAid이 아닐 경우
-        if (type != ActionType.ForeignAid) {
-            List<Player> otherplayers = getotherplayers(player);
-
-            allowedActions.add("의심");
-            allowedActions.add("패스");
-            userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-
-            for (int i = 0; i < otherplayers.size(); i++) {
-                String otherplayersname = otherplayers.get(i).getName().toString();
-                simpMessagingTemplate.convertAndSendToUser(otherplayersname, destination, userMessage);
-            }
-            allowedActions.clear();
-
-            // 값 전달 받은 후
-            Player otherplayer = new Player("aa", Card.Ambassador, Card.Captain); // 임의의 임시 플레이어
-            choice = "전달 받은 값"; // 전달 받은 값
-
-            HashMap<Player, String> doubtplayerMap = new HashMap<Player, String>();
-            for (int i = 0; i < otherplayers.size(); i++) {
-                doubtplayerMap.put(otherplayer, choice);
-            }
-
-            Player doubtplayer = null;
-            
-            for (Player key : doubtplayerMap.keySet()) {
-                if (doubtplayerMap.get(key).equals("의심")) {
-                    doubtplayer = key;
-                    break;
-                }
-            }
-
-            // 의심을 누른 사람이 있을 경우
-            if (doubtplayer != null) {
-                // 블러핑이였을 경우
-                if (bluff == true) {
-                    cardDown(player);
-                    return true;
-                }
-                // 블러핑이 아니였을 경우
-                else {
-                    cardDown(doubtplayer);
-                    successcounter(player, card);
-                    return true;
-                }
-            }
-            // 의심을 누른 사람이 없고 target이 존재할 경우
-            else if (target != null) {
-                switch (type) {
-
-                // 해당 액션이 "암살자"일 경우
-                case Assassinate:
-                    allowedActions.add("귀족으로 방해");
-                    allowedActions.add("패스");
-                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-                    allowedActions.clear();
-
-                    choice = "전달 받은 값";// 전달 받은 값
-                    
-                    switch (choice) {
-                        // 타겟이 "귀족으로 방해"를 선택한 경우
-                        case "귀족으로 방해":
-                            return assassinatecounter(player, target, action);
-                        // 타겟이 "패스"를 선택할 경우
-                        case "패스":
-                            return false;
-                    }
-
-                // 해당 액션이 "사령관"일 경우
-                case Steal:
-                    allowedActions.add("사령관으로 방해");
-                    allowedActions.add("외교관으로 방해");
-                    allowedActions.add("패스");
-                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-                    allowedActions.clear();
-                    
-                    choice = "전달 받은 값"; // 전달 받은 값
-
-                    switch (choice) {
-                        // 타겟이 "사령관으로 방어"를 선택한 경우
-                        case "사령관으로 방해":
-                            return stealcounter(player, target, Card.Captain);
-
-                        // 타겟이 "외교관으로 방어"를 선택한 경우
-                        case "외교관으로 방해":
-                            return stealcounter(player, target, Card.Ambassador);
-
-                            // 타겟이 "패스"를 선택한 경우
-                            case "패스":
-                                return false;
-                        }
-                }
-            }
-        // 아무도 의심을 누르지않고 타겟이 없을 경우
-        return false;
-        }
-        // 액션이 ForeignAid일 경우
-        else {
-            List<Player> otherplayers = getotherplayers(player);
-            allowedActions.add("방해");
-            allowedActions.add("패스");
-            userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-            for (int i = 0; i < otherplayers.size(); i++) {
-                String otherplayersname = otherplayers.get(i).getName().toString();
-                simpMessagingTemplate.convertAndSendToUser(otherplayersname, destination, userMessage);
-            }
-            allowedActions.clear();
-
-            // 값 전달 받은 후
-            Player otherplayer = new Player("aa", Card.Ambassador, Card.Captain); // 임의의 임시 플레이어
-            choice = "전달 받은 값"; // 전달 받은 값
-
-            HashMap<Player, String> blockplayerMap = new HashMap<Player, String>();
-            for (int i = 0; i < otherplayers.size(); i++) {
-                blockplayerMap.put(otherplayer, choice);
-            }
-
-            Player blockplayer = null;
-            
-            for (Player key : blockplayerMap.keySet()) {
-                if (blockplayerMap.get(key).equals("방해")) {
-                    blockplayer = key;
-                    break;
-                }
-            }
-
-            // 방해를 선택한 플레이어가 존재할 경우
-            if (blockplayer != null) {
-
-                allowedActions.add("의심");
-                allowedActions.add("패스");
-                userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-                allowedActions.clear();
-
-                // 값 전달 받은 후
-                choice = "전달 받은 값"; // 전달 받은 값
-
-                // 플레이어가 의심한 경우
-                if (choice == "의심") {
-                    // 타겟이 공작 카드를 가지고 있을 경우
-                    if (blockplayer.hasCard(Card.Duke)) {
-                        allowedActions.add("공작으로 방어");
-                        allowedActions.add("카드 한 장 희생");
-                        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                        simpMessagingTemplate.convertAndSendToUser(blockplayer.getName(), destination, userMessage);
-                        allowedActions.clear();
-                        
-                        // 값 전달 받은 후
-                        choice = "전달 받은 값"; // 전달 받은 값
-
-                        // 타겟이 "공작으로 방어"를 선택한 경우
-                        if (choice == "공작으로 방어") {
-                            cardDown(player);
-                            successcounter(blockplayer, Card.Duke);
-                            return true;
-                        }
-                        // 타겟이 "카드 한 장 희생"을 선택한 경우
-                        else {
-                            cardDown(blockplayer);
-                            return false;
-                        }
-                    }
-                    // 타겟에게 공작 카드가 없을 경우
-                    else {
-                        cardDown(blockplayer);
-                        return false;
-                    }
-                }
-                // 플레이어가 의심하지 않은 경우
-                else {
-                    return true;
-                }
-
-            }
-            // 아무도 의심하지 않은 경우
-            else {
-                return false;
-            }
-        }
-    }
-
-    /**
-     * 암살자 사용을 방해 받았을때 의심 할 수 있는 기회 제공
-     * 
-     * @param player 의심 / 패스를 선택하는 플레이어
-     * @param target 방해를 실행시킨 액션의 대상
-     * @param action 실행되는 액션
-     * @return 선택여부와 카드여부에 따라 카운터 결과 값 boolean으로 반환 -> true(성공, 액션 차단)
-     */
-    boolean assassinatecounter(Player player, Player target, Action action){
-
-        String playername = player.toString();
-        String targetname = target.toString();
-        Message userMessage = null;
-
-        String choice = ""; // 의심 or 방해 선택 여부 (y,n)
-
-        allowedActions.add("의심");
-        allowedActions.add("패스");
-        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-        simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-        allowedActions.clear();
-
-        // 값 전달 받은 후 
-        choice = "전달 받은 값"; // 전달 받은 값
-
-        // 타겟의 방해에 대한 의심
-        if (choice == "의심") {
-            // 타겟이 귀족 카드를 가지고 있을 경우
-            if (target.hasCard(Card.Contessa)) {
-                allowedActions.add("귀족으로 방해");
-                allowedActions.add("카드 한 장 희생");
-                userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-                allowedActions.clear();
-
-                // 값 전달 받은 후 
-                choice = "전달 받은 값"; // 전달 받은 값
-
-                // "귀족으로 방해"를 선택했을 경우
-                if (choice.equals("귀족으로 방해")) {
-                    successcounter(target, Card.Contessa);
-                    return true;
-                }
-                // "카드 한 장 희생"을 선택했을 경우
-                else {
-                    cardDown(target);
-                    return false;
-                }
-
-            }
-            // 타겟에게 귀족 카드가 없을 경우
-            else {
-                cardDown(target);
-                return false;
-            }
-        }
-        // 타겟의 방해에 대한 의심을 하지 않을 경우
-        else {
-            cardDown(player);
-            return true;
-        }
-    }
-
-    /**
-     * 
-     * 사령관 사용을 방해 받았을때 의심 할 수 있는 기회 제공
-     * 
-     * @param player 의심 / 패스를 선택하는 플레이어
-     * @param target 방해를 실행시킨 액션의 대상
-     * @param action 실행되는 액션
-     * @return 선택여부와 카드여부에 따라 카운터 결과 값 boolean으로 반환 -> true(성공, 액션 차단)
-     */
-    boolean stealcounter(Player player, Player target, Card card) {
-
-        String playername = player.toString();
-        String targetname = target.toString();
-        Message userMessage = null;
-        String choice = "";
-
-        allowedActions.add("의심");
-        allowedActions.add("패스");
-        userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-        simpMessagingTemplate.convertAndSendToUser(playername, destination, userMessage);
-        allowedActions.clear();
-
-        // 값 전달 받은 후 
-        choice = "전달 받은 값"; // 전달 받은 값
-
-        // 타겟의 방해에 대한 의심
-        if (choice == "의심") {
-            
-            switch(card){
-
-                // 타겟이 "사령관으로 방어"를 선택했을 경우
-                case Captain:
-                // 타겟이 사령관 카드를 가지고 있을 경우
-                if (target.hasCard(Card.Captain)) {
-                    allowedActions.add("사령관으로 방어");
-                    allowedActions.add("카드 한 장 희생");
-                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-                    allowedActions.clear();
-
-                    // 값 전달 받은 후 
-                    choice = "전달 받은 값"; // 전달 받은 값
-
-                    // 타겟이 "사령관으로 방어"를 선택했을 경우
-                    if (choice.equals("사령관으로 방어")) {
-                        cardDown(player);
-                        successcounter(target, Card.Captain);
-                        return true;
-                    }
-                    // 타겟이 "카드 한 장 희생"을 선택했을 경우
-                    else {
-                        cardDown(target);
-                        return false;
-                    }
-                }
-                // 타겟이 사령관 카드를 가지고 있지 않은 경우
-                else {
-                    cardDown(target);
-                    return false;
-                }
-
-                    // 타겟이 "외교관으로 방어"를 선택했을 경우
-                case Ambassador:
-                if (target.hasCard(Card.Ambassador)) {
-                    allowedActions.add("외교관으로 방어");
-                    allowedActions.add("카드 한 장 희생");
-                    userMessage = new Message(MessageType.CHOICE, allowedActions, "선택");
-                    simpMessagingTemplate.convertAndSendToUser(targetname, destination, userMessage);
-                    allowedActions.clear();
-
-                    // 값 전달 받은 후 
-                    choice = "전달 받은 값"; // 전달 받은 값
-
-                    // 타겟이 "외교관으로 방어"를 선택했을 경우
-                    if (choice.equals("외교관으로 방어")) {
-                        cardDown(player);
-                        successcounter(target, Card.Ambassador);
-                        return true;
-                    }
-                    // 타겟이 "카드 한 장 희생"을 선택했을 경우
-                    else {
-                        cardDown(target);
-                        return false;
-                    }
-                }
-                // 타겟이 외교관 카드를 가지고 있지 않은 경우
-                else {
-                    cardDown(target);
-                    return false;
-                }
-            }
-        }
-        // 타겟의 방해에 대한 의심을 하지 않을 경우
-        else {
-            cardDown(player);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * 카운터 액션에 성공했을 경우 해당 카드 덱으로 이동 후 새 카드 한장 드로우
-     * 
-     * @param player 카운터 액션에 성공한 플레이어
-     * @param card   덱으로 이동할 카드
-     */
-    void successcounter(Player player, Card card) {
-        addCardToDeck(player.getCard(card));
-        player.addCard(drawOne());
-        shuffleDeck();
+        logger.info("플레이어 {}에게 메시지를 전달함. 메시지: {}", player.getName(), obj.toString());
+        simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, obj);
     }
 
     /**
      * 덱에서 카드를 한장 뽑는다.
+     * 
      * @return 뽑은 카드
      */
     Card drawOne() {
@@ -920,6 +522,7 @@ public class WebGame {
 
     /**
      * 덱에 카드를 추가한다.
+     * 
      * @param card 추가할 카드
      */
     void addCardToDeck(Card card) {
@@ -928,11 +531,203 @@ public class WebGame {
 
     /**
      * 모든 플레이어에게 메시지를 전달한다.
+     * 
      * @param obj 전달할 메시지의 payload
      */
-    void updateAllPlayers(Object obj) {
-        for (Player player : players) {
-            simpMessagingTemplate.convertAndSendToUser(player.getName(), destination, obj);
+    void sendToAllPlayers(Object obj) {
+        for (String playername : playerNames) {
+            simpMessagingTemplate.convertAndSendToUser(playername, destination, obj);
         }
     }
+
+    /**
+     *  카운터 액션을 반환한다. 카운터 액션이 없는 경우 null을 반환한다.
+     * @param action 액션
+     * @param card 카드 
+     * @param player 플레이어
+     * @param target 타겟
+     * @return 카운터 액션
+     * @throws InterruptedException
+     */
+    CounterAction getCounterAction(Action action, Card card, Player player, Player target) throws InterruptedException {
+        // 카운터가 불가능한 액션인 경우 null을 반환한다.
+        if (action != Action.ForeignAid && card == null) {
+            return null;
+        }
+
+        Map<Future<String>, Player> futureMap = new HashMap<>();
+        Map<String, Card> cardMap = new HashMap<>();
+
+        String message;
+        if (card != null) {
+            // 카드를 사용 하므로 어떤 카드를 사용하는지 보여준다.
+            message = String.format("%s는 %s를 하기 위해 %s를 가지고 있다고 주장한다.", player.getName(), action.name(), card.name());
+            if (target != null) {
+                // 타겟이 있는 액션인 경우 타겟을 보여준다.
+                message.concat(String.format("%n목표 : %s", target.getName()));
+            }
+        } else {
+            // 카드를 사용하지 않는 액션
+            message = String.format("%s는 %s를 하려고 한다.", player.getName(), action.name());
+        }
+
+        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);           
+
+        // 원조만이 블락당할 수 있다.
+        if (action == Action.ForeignAid) {
+            // 플레이어들마다 Future를 받는다.
+            for (Player p : players) {
+                // 액션을 수행하는 플레이어는 카운터할 수 없다.
+                if (p != player) {
+                    Future<String> f = getChoiceAsync(p, new String[] { "Block (Duke)", "Pass" }, message);
+                    futureMap.put(f, p);
+                }
+            }
+        } else {
+            List<String> choices = new ArrayList<>();
+            // 이 액션을 카운터할 수 있는 카드를 넣는다.
+            for (Card c : action.blockedBy) {
+                String s = String.format("Block (%s)", c);
+                choices.add(s);
+                cardMap.put(s, c);
+            }
+
+            choices.add("Challenge");
+            choices.add("Pass");
+
+            for (Player p : players) {
+                if (p != player && p != target) {
+                    // 플레이어가 타겟도 행동을 취하는 플레이어도 아닌 경우 챌린지나 패스를 할 수 있다.
+                    String[] options = { "Challenge", "Pass" };
+                    Future<String> f = getChoiceAsync(p, options, message);
+                    futureMap.put(f, p);
+                } else if (p == target) {
+                    // 타겟이면 위에서 넣은 옵션들을 사용한다.
+                    Future<String> f = getChoiceAsync(p, choices.toArray(new String[0]), message);
+                    futureMap.put(f, p);
+                }
+            }
+        }
+
+        // 받은 응답들 중에서 패스가 아닌 첫 응답을 찾는다. (모두가 패스했다면 null을 반환한다.)
+        Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
+
+        // 모든 플레이어에게 선택이 끝났다는걸 전달한다.
+        stopChoice();
+
+        // 완료되지 않은 Future를 모두 취소한다.
+        futureMap.keySet().forEach(f -> f.cancel(true));
+
+        // 어떤 플레이어가 선택했다면 지금 반환한다.
+        if (future != null) {
+            try {
+                String choice = future.get();
+                Card c = cardMap.get(choice);
+                return new CounterAction(c != null, futureMap.get(future), c);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        // 아무 플레이어도 카운터하지 않았다면 null을 반환한다.
+        return null;
+    }
+
+
+    private <T> Future<T> getChoiceAsync(Player player, T[] choices, String prompt) {
+        return executorService.submit(() -> getChoice(player, choices, prompt));
+    }
+
+    /**
+     * 플레이어들에게 선택이 끝났다는 메시지를 전달한다.
+     */
+    void stopChoice() {
+        String userMessage = "선택이 끝났다.";
+        Message message = new Message(MessageType.UPDATE, userMessage, userMessage);
+        sendToAllPlayers(message);
+    }
+
+    /**
+     * Future 중에서 Predicate가 true인 첫번째 Future를 반환한다.
+     * @param <T> Future의 결과 타입
+     * @param futures Future들
+     * @param predicate Predicate
+     * @return Predicate가 true인 첫번째 Future
+     * @throws InterruptedException
+     */
+    <T> Future<T> getFirst(Collection<Future<T>> futures, Predicate<T> predicate) throws InterruptedException {
+        while (!futures.isEmpty()) {
+            if (Thread.interrupted()) {
+                throw new InterruptedException();
+            }
+            
+            for (Iterator<Future<T>> iterator = futures.iterator(); iterator.hasNext();) {
+                Future<T> future = iterator.next();
+                // Future가 완료되었으면 결과를 반환한다.
+                if (future.isDone()) {
+                    try {
+                        // Predicate가 true이면 결과를 반환한다.
+                        if (predicate.test(future.get())) {
+                            return future;
+                        } else {
+                            // Predicate가 false이면 Future를 제거한다.
+                            iterator.remove();
+                        }
+                    } catch (ExecutionException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+            Thread.sleep(100);
+        }
+
+        // 모든 Future가 완료되었지만 Predicate가 true인 결과가 없으면 null을 반환한다.
+        return null;
+    }
+
+    /**
+     * 플레이어에게 자신의 카드만 볼 수 있도록 메시지를 담기 위해 사용하는 클래스
+     */
+    private static class Update {
+        public Card[] localPlayerCards;
+        public PlayerState[] players;
+
+        public Update(Player localPlayer, Player[] players) {
+            this.localPlayerCards = localPlayer.getCards().toArray(new Card[0]);
+            this.players = Arrays.stream(players)
+                    .filter(Objects::nonNull)
+                    .map(PlayerState::new)
+                    .toArray(PlayerState[]::new);
+        }
+
+        @Override
+        public String toString() {
+            String message = "";
+            message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
+
+            for (int i = 0; i < players.length; i++) {
+                message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, "
+                        + players[i].cardNumbers + " cards) ";
+            }
+
+            return message;
+        }
+    }
+
+    
+    /**
+     * 플레이어의 상태를 담기 위해 사용하는 클래스
+     */
+    private static class PlayerState {
+        public String name;
+        public int coins;
+        public int cardNumbers;
+
+        public PlayerState(Player player) {
+            this.name = player.getName();
+            this.coins = player.coins;
+            this.cardNumbers = player.getCardNumbers();
+        }
+    }
+
 }

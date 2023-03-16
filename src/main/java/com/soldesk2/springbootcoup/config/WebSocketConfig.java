@@ -16,8 +16,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         
                 // 랜덤 Principal 이름 생성기
                 .setHandshakeHandler(new AssignPrincipalHandshakeHandler())
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
+                .setAllowedOriginPatterns("*");
     }
 
     @Override

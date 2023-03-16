@@ -26,7 +26,7 @@ public class Lobby {
     private String destination;
 
     private String name;
-    private WebGame game;
+    public WebGame game;
 
     private SimpMessagingTemplate simpMessagingTemplate;
 
@@ -38,6 +38,7 @@ public class Lobby {
         this.destination = "/lobby";
         this.playerNames = new ArrayList<>();
         this.state = State.OPEN;
+        this.game = new WebGame(destination, simpMessagingTemplate);
     }
 
     public void addPlayer(String playerName) {
@@ -74,23 +75,17 @@ public class Lobby {
             throw new IllegalStateException("로비명 " + this.name + "에서 인원수가 맞지 않은데 게임이 시작되려 함");
         }
 
-        if (this.game != null) {
-            throw new IllegalStateException("로비명 " + this.name + "에서 시작되어서는 안되는 게임이 이미 시작 되었음.");
-        }
-
-
         String[] playerNamesArray = new String[playerNames.size()];
         playerNamesArray = playerNames.toArray(playerNamesArray);
 
         logger.info("{} 에서 게임 시작중....", destination);
         updateAllPlayers("로비 " + this.getName() + "에서 게임 시작중...");
 
+
+        logger.info("Game Started at lobbyName {}, State:", this.name, this.state);
         this.state = State.STARTED;
-        logger.info("state: {}", this.state);
 
-        this.game = new WebGame(playerNamesArray, destination, simpMessagingTemplate);
-        logger.info("Game created: {}", this.game);
-
+        this.game.play(playerNamesArray);
     }
 
 

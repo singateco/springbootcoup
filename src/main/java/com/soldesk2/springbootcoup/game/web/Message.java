@@ -28,4 +28,8 @@ public class Message {
         this(type, content, null);
     }
 
+    @Override
+    public String toString() {
+        return "Message [type=" + type + ", userMessage=" + userMessage + ", content=" + content.toString() + "]";
+    }
 }

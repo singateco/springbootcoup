@@ -1,46 +1,42 @@
 package com.soldesk2.springbootcoup.game;
 
-import lombok.Getter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
-@Getter
-public class Action {
-    
-    private ActionType actionType;
-    private boolean legitMove;
+public enum Action {
+    Block(null, true),
+    Income(null),
+    ForeignAid(null, Card.Duke),
+    Coup(null, true),
+    Tax(Card.Duke),
+    Assassinate(Card.Assassin, true, Card.Contessa),
+    Exchange(Card.Ambassador),
+    Steal(Card.Captain, true, Card.Captain, Card.Ambassador);
 
-    public Action(ActionType actionType, boolean legitMove) {
-        this.actionType = actionType;
-        this.legitMove = legitMove;
+    /**
+     * The card associated with this action.
+     */
+    public final Card card;
+    /**
+     * True if this action targets another player, false otherwise.
+     */
+    public final boolean targeted;
+    /**
+     * A set of all cards that can block this action. If empty, this action is unblockable.
+     */
+    public final Set<Card> blockedBy;
+
+    Action(Card card, Card... canBlock) {
+        this(card, false, canBlock);
     }
 
-    public Action(ActionType actionType) {
-        this.actionType = actionType;
-        this.legitMove = true;
-    }
-
-
-    @Override
-    public String toString() {
-        return "{" + this.actionType + " | legitMove?: " + this.legitMove + "}";
-    }
-
-
-    public enum ActionType {
-        Income,
-        ForeignAid,
-        Tax,
-        Assassinate,
-        Coup,
-        Exchange,
-        Steal,
-        Block
-    }
-
-    public ActionType getActionType(){
-        return actionType;
-    }
-    public Boolean getlegitMove(){
-        return legitMove;
+    Action(Card card, boolean targeted, Card... canBlock) {
+        this.card = card;
+        this.targeted = targeted;
+        Set<Card> objects = new HashSet<>(Arrays.asList(canBlock));
+        blockedBy = Collections.unmodifiableSet(objects);
     }
 
 }
