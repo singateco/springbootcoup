@@ -243,8 +243,18 @@ public class WebGame {
 
         // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
 
+        if (action == Action.ForeignAid) {
+            System.out.println(player);
+            if (doAction(Action.Block, Card.Duke, counterAction.player, player)) {
+                log("블록 성공!");
+                return false;
+            }else{
+                log("블록 실패!");
+                System.out.println(player);
+            }
+        }
         // 블록이 가능하다면 블록을 먼저 시도한다.
-        if (counterAction.isBlock) {
+        else if (counterAction.isBlock) {
             log("%s가 %s로 블록함", counterAction.player, counterAction.card);
 
             // 이 블록도 챌린지될수 있음
