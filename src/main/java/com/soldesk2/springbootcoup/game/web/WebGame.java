@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -439,7 +441,7 @@ public class WebGame {
      * @return 플레이어가 선택한 값.
      */
 
-    private <T> T getChoice(Player player, T[] choices, String prompt) throws InterruptedException {
+    private <T> T getChoice(Player player, T[] choices, String prompt) {
         // TODO: JSON 형식으로 메시지를 보내도록 수정.
 
         logger.debug("Getting Choice from player {}... options: {}. prompt: {}", player, choices, prompt);
@@ -448,10 +450,14 @@ public class WebGame {
         Message message = new Message(MessageType.CHOICE, choicesString, prompt);
         sendMessage(player, message);
         
-        Future<String> futureResponse = executorService.submit(
+        CompletableFuture<String> futureResponse = CompletableFuture.supplyAsync(
                 () -> {
                     try {
                         while (true) {
+                            if (Thread.interrupted()) {
+                                throw new InterruptedException();
+                            }
+
                             String s = playerActionQueueMap.get(player.getName()).poll();
                             if (s != null) {
                                 return s;
@@ -478,8 +484,16 @@ public class WebGame {
             logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
             futureResponse.cancel(true);
             return null;
+        } catch (CancellationException e) {
+            logger.info("플레이어 {}로부터 응답을 받는 도중 취소됨.", player.getName(), e);
+            return null;        
         } catch (ExecutionException e) {
             logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
+            futureResponse.cancel(true);
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("플레이어 {}로부터 응답을 받는 도중 인터럽트 발생", player.getName(), e);
             futureResponse.cancel(true);
             return null;
         }
@@ -555,7 +569,7 @@ public class WebGame {
             return null;
         }
 
-        Map<Future<String>, Player> futureMap = new HashMap<>();
+        Map<CompletableFuture<String>, Player> futureMap = new HashMap<>();
         Map<String, Card> cardMap = new HashMap<>();
 
         String message;
@@ -573,13 +587,13 @@ public class WebGame {
 
         Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);           
 
-        // 원조만이 블락당할 수 있다.
+        // 원조만이 모든 플레이어에게 블락당할 수 있다.
         if (action == Action.ForeignAid) {
             // 플레이어들마다 Future를 받는다.
             for (Player p : players) {
                 // 액션을 수행하는 플레이어는 카운터할 수 없다.
                 if (p != player) {
-                    Future<String> f = getChoiceAsync(p, new String[] { "Block (Duke)", "Pass" }, message);
+                    CompletableFuture<String> f = getChoiceAsync(p, new String[] { "Block (Duke)", "Pass" }, message);
                     futureMap.put(f, p);
                 }
             }
@@ -599,31 +613,65 @@ public class WebGame {
                 if (p != player && p != target) {
                     // 플레이어가 타겟도 행동을 취하는 플레이어도 아닌 경우 챌린지나 패스를 할 수 있다.
                     String[] options = { "Challenge", "Pass" };
-                    Future<String> f = getChoiceAsync(p, options, message);
+                    CompletableFuture<String> f = getChoiceAsync(p, options, message);
                     futureMap.put(f, p);
                 } else if (p == target) {
                     // 타겟이면 위에서 넣은 옵션들을 사용한다.
-                    Future<String> f = getChoiceAsync(p, choices.toArray(new String[0]), message);
+                    CompletableFuture<String> f = getChoiceAsync(p, choices.toArray(new String[0]), message);
                     futureMap.put(f, p);
                 }
             }
         }
 
         // 받은 응답들 중에서 패스가 아닌 첫 응답을 찾는다. (모두가 패스했다면 null을 반환한다.)
-        Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
+        
+        //Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
+
+        CompletableFuture<String> []futureList = futureMap.keySet().toArray(new CompletableFuture[0]);
+        
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(futureList);
+
+        allFutures.orTimeout(30, TimeUnit.SECONDS);
+
+        // Declare a variable to store the first non-pass result
+        CompletableFuture<String> nonPassResult = null;
+
+        // Loop through the array and check for non-pass results
+        for (CompletableFuture<String> future : futureList) {
+            try {
+                String result = future.get(30, TimeUnit.SECONDS);
+
+                if (!result.equalsIgnoreCase("pass")) {
+                    nonPassResult = future;
+                    for (CompletableFuture<String> otherFuture : futureList) {
+                        if (otherFuture != future) {
+                            otherFuture.cancel(true);
+                        }
+                    }
+                    break;
+                }
+            } catch (ExecutionException | InterruptedException | TimeoutException e) {
+                logger.error("Future operations error", e);
+            }
+        }
+
+
+
 
         // 모든 플레이어에게 선택이 끝났다는걸 전달한다.
         stopChoice();
 
+        /*
         // 완료되지 않은 Future를 모두 취소한다.
         futureMap.keySet().forEach(f -> f.cancel(true));
+        */
 
         // 어떤 플레이어가 선택했다면 지금 반환한다.
-        if (future != null) {
+        if (nonPassResult != null) {
             try {
-                String choice = future.get();
+                String choice = nonPassResult.get();
                 Card c = cardMap.get(choice);
-                return new CounterAction(c != null, futureMap.get(future), c);
+                return new CounterAction(c != null, futureMap.get(nonPassResult), c);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
@@ -634,8 +682,8 @@ public class WebGame {
     }
 
 
-    private <T> Future<T> getChoiceAsync(Player player, T[] choices, String prompt) {
-        return executorService.submit(() -> getChoice(player, choices, prompt));
+    private <T> CompletableFuture<T> getChoiceAsync(Player player, T[] choices, String prompt) {
+        return CompletableFuture.supplyAsync(() -> getChoice(player, choices, prompt), executorService);
     }
 
     /**
@@ -691,8 +739,12 @@ public class WebGame {
     private static class Update {
         public Card[] localPlayerCards;
         public PlayerState[] players;
+        public String userName;
+        public int coins;
 
         public Update(Player localPlayer, Player[] players) {
+            this.userName = localPlayer.getName();
+            this.coins = localPlayer.coins;
             this.localPlayerCards = localPlayer.getCards().toArray(new Card[0]);
             this.players = Arrays.stream(players)
                     .filter(Objects::nonNull)
@@ -703,8 +755,9 @@ public class WebGame {
         @Override
         public String toString() {
             String message = "";
+            message += "당신의 이름: " + userName + " 코인 수: " + coins + "\n";
             message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
-
+            
             for (int i = 0; i < players.length; i++) {
                 message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, "
                         + players[i].cardNumbers + " cards) ";
