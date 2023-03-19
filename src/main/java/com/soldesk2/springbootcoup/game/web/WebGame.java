@@ -777,7 +777,13 @@ public class WebGame {
             message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
 
             for (int i = 0; i < players.length; i++) {
-                message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, "
+                message += "Player " + i + " : " + players[i].name;
+                
+                if (players[i].name.equals(userName)) {
+                    message += " (당신)";
+                }
+
+                message += " (" + players[i].coins + " coins, "
                         + players[i].cardNumbers + " cards) ";
             }
 
