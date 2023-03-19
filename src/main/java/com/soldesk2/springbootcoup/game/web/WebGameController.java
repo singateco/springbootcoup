@@ -105,7 +105,17 @@ public class WebGameController {
     @MessageMapping("/showallgame")
     @SendToUser("/lobby")
     public String showAllGame() {
-        return this.lobbyList.toString();
+        StringBuilder sb = new StringBuilder();
+        
+        if (lobbyList.isEmpty()) {
+            return "현재 로비가 없습니다.";
+        }
+        
+        for (Lobby lobby : lobbyList.values()) {
+            sb.append(lobby.toString()).append(" : ").append(lobby.getState()).append(" ");
+        }
+
+        return sb.toString();
     }
 
     @MessageMapping("/create")
