@@ -45,10 +45,11 @@ public class WebGameController {
 
     @MessageMapping("/chat/{lobbyName}")
     @SendTo("/topic/chat/{lobbyName}")
-    public Message chat(@DestinationVariable(value = "lobbyName") String lobbyName, Principal principal, @Payload String message) {
+    public Message chat(@DestinationVariable(value = "lobbyName") String lobbyName, Principal principal,
+            @Payload String message) {
         String username = principal.getName();
-        
-        //logger.debug("Message recieved: {} from: {}", message, username);
+
+        // logger.debug("Message recieved: {} from: {}", message, username);
 
         ChatPayload sendingPayload = new ChatPayload();
         sendingPayload.setSender(username);
@@ -56,7 +57,6 @@ public class WebGameController {
 
         return new Message(MessageType.CHAT, sendingPayload);
     }
-
 
     @MessageMapping("/game")
     @SendToUser("/lobby")
@@ -75,14 +75,12 @@ public class WebGameController {
         return "로비명 " + lobbyName + "에 메시지 전송 완료";
     }
 
-
-
     @MessageMapping("/start")
     @SendToUser("/lobby")
     public String startGame(Principal principal, @Header String lobbyName) {
         String username = principal.getName();
         logger.info("유저 {}가 로비 {}에 들어가려함", username, lobbyName);
-        
+
         if (!lobbyList.containsKey(lobbyName)) {
             logger.info("유저 {}가 존재하지 않는 로비 {} 게임 시작 하려 함.", username, lobbyName);
             return "로비명 " + lobbyName + "는 존재하지 않습니다.";
@@ -94,14 +92,13 @@ public class WebGameController {
             logger.info("유저 {}가 이미 게임이 시작된 로비 {} 게임 시작 하려함.", username, lobbyName);
             return "로비명 " + lobbyName + "은 이미 게임이 시작되었습니다.";
         }
-        
+
         try {
             lobby.startGame();
         } catch (IllegalStateException e) {
             return "에러 일어남 : " + e.getMessage();
         }
-        
-        
+
         return null;
     }
 
@@ -140,16 +137,17 @@ public class WebGameController {
             lobby.addPlayer(name);
         } catch (IllegalStateException e) {
             logger.error("로비에 유저 추가시 에러 발생 : {}", e.getMessage());
-            return "에러 발생함: " + e.getMessage(); 
+            return "에러 발생함: " + e.getMessage();
         }
 
         logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
-        return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(); 
+        return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames();
     }
 
     @MessageMapping("/chat")
     @SendToUser("/lobby")
-    public String chatinroom(Principal principal, @Payload String payload, @Header(defaultValue = "missingHeader") String lobbyName){
+    public String chatinroom(Principal principal, @Payload String payload,
+            @Header(defaultValue = "missingHeader") String lobbyName) {
 
         if (lobbyName.equals("missingHeader")) {
             logger.info("유저 {}가 로비명 없이 로비 생성하려함", principal.getName());
@@ -163,10 +161,10 @@ public class WebGameController {
         Lobby lobby = lobbyList.get(lobbyName);
         List<String> players = lobby.playerNames;
 
-        for (int i = 0; i < players.size(); i++ ) {
+        for (int i = 0; i < players.size(); i++) {
             simpMessagingTemplate.convertAndSendToUser(players.get(i), "/lobby", message);
         }
-        
+
         return principal.getName() + ": " + payload;
     }
 
@@ -185,7 +183,7 @@ public class WebGameController {
             if (isAllDisconnected) {
                 lobby.endGame();
             }
-            
+
             if (lobby.getState() == Lobby.State.ENDED) {
                 logger.info("로비 {} 삭제", lobbyName);
                 lobbyList.remove(lobbyName);
@@ -210,17 +208,17 @@ public class WebGameController {
 
     @SendToUser("/lobby")
     @MessageMapping("/users")
-    public String users() {
+    public String users(Principal principal) {
         StringBuilder sb = new StringBuilder();
         for (Principal p : connectedUsers) {
-            sb.append(p.getName()).append(" 접속한 로비 : ").append( 
-                lobbyList.values().stream().filter(lobby -> lobby.playerNames.contains(p.getName()))
-                                           .map(lobby -> lobby.getName())
-                                           .findFirst().orElse("없음"))
-            .append("\n");
+            sb.append(principal.getName().equals(p.getName()) ? p.getName() + "(당신)" : p.getName()).append(" 접속한 로비 : ")
+                    .append(
+                            lobbyList.values().stream().filter(lobby -> lobby.playerNames.contains(p.getName()))
+                                    .map(lobby -> lobby.getName())
+                                    .findFirst().orElse("없음"))
+                    .append("\n");
         }
 
         return sb.toString();
     }
 }
-

@@ -499,7 +499,10 @@ public class WebGame {
         } catch (TimeoutException e) {
             logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
             futureResponse.cancel(true);
-            return null;
+            
+            // 랜덤으로 골라 하나 보냄.
+            return choices[random.nextInt(choices.length)];
+
         } catch (CancellationException e) {
             logger.info("플레이어 {}로부터 응답을 받는 도중 취소됨.", player.getName(), e);
             return null;        
