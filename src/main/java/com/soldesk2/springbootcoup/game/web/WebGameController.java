@@ -112,7 +112,7 @@ public class WebGameController {
         }
         
         for (Lobby lobby : lobbyList.values()) {
-            sb.append(lobby.toString()).append(" : ").append(lobby.getState()).append(" ");
+            sb.append(lobby.toString()).append("\n");
         }
 
         return sb.toString();

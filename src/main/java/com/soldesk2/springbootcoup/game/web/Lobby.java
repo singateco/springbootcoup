@@ -112,10 +112,10 @@ public class Lobby {
 
     @Override
     public String toString() {
-        return "현재 상태 : " + this.state + "\n"
-               + "현재 플레이어: " + this.playerNames + "\n"
-               + "대상 주소: " + this.destination;
-    }
+        return "로비 이름 : " + this.name + "\n"
+               +  "현재 상태 : " + this.state + "\n"
+               + "현재 플레이어: " + this.playerNames + "\n";
+        }
 
     @Override
     public int hashCode() {
