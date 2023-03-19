@@ -40,7 +40,7 @@ public class WebGame {
 
     private final Random random;
     public Map<String, Queue<String>> playerActionQueueMap;
-    
+
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     private static final long ACTION_TIMEOUT_SECONDS = 60;
@@ -90,7 +90,6 @@ public class WebGame {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
             playerActionQueueMap.put(players[i].getName(), new ConcurrentLinkedQueue<>());
         }
-
 
         try {
             Thread.sleep(1000);
@@ -153,7 +152,7 @@ public class WebGame {
             // 남아 있는 플레이어가 승리한다.
             playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst()
                     .orElseThrow(IllegalStateException::new));
-            
+
             this.endGame();
 
         } catch (InterruptedException e) {
@@ -229,8 +228,9 @@ public class WebGame {
 
     /**
      * 액션을 실행한다.
+     * 
      * @param action 액션
-     * @param card 카드 
+     * @param card   카드
      * @param player 플레이어
      * @param target 타겟
      * @return 액션이 성공적으로 실행되었는지 여부
@@ -250,13 +250,11 @@ public class WebGame {
         // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
 
         if (action == Action.ForeignAid) {
-            System.out.println(player);
             if (doAction(Action.Block, Card.Duke, counterAction.player, player)) {
                 log("블록 성공!");
                 return false;
-            }else{
+            } else {
                 log("블록 실패!");
-                System.out.println(player);
             }
         }
         // 블록이 가능하다면 블록을 먼저 시도한다.
@@ -379,6 +377,7 @@ public class WebGame {
 
     /**
      * 플레이어가 카드를 1장 버리게 한다.
+     * 
      * @param player 카드를 버리게 할 플레이어
      * @throws InterruptedException
      */
@@ -390,6 +389,7 @@ public class WebGame {
 
     /**
      * 플레이어에게 버릴 카드를 선택하게 한다.
+     * 
      * @param player 카드를 선택하게 할 플레이어
      * @return 선택한 카드
      * @throws InterruptedException
@@ -465,7 +465,7 @@ public class WebGame {
 
         Message message = new Message(MessageType.CHOICE, choicesString, prompt);
         sendMessage(player, message);
-        
+
         CompletableFuture<String> futureResponse = CompletableFuture.supplyAsync(
                 () -> {
                     try {
@@ -499,13 +499,13 @@ public class WebGame {
         } catch (TimeoutException e) {
             logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
             futureResponse.cancel(true);
-            
+
             // 랜덤으로 골라 하나 보냄.
             return choices[random.nextInt(choices.length)];
 
         } catch (CancellationException e) {
             logger.info("플레이어 {}로부터 응답을 받는 도중 취소됨.", player.getName(), e);
-            return null;        
+            return null;
         } catch (ExecutionException e) {
             logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
             futureResponse.cancel(true);
@@ -574,9 +574,10 @@ public class WebGame {
     }
 
     /**
-     *  카운터 액션을 반환한다. 카운터 액션이 없는 경우 null을 반환한다.
+     * 카운터 액션을 반환한다. 카운터 액션이 없는 경우 null을 반환한다.
+     * 
      * @param action 액션
-     * @param card 카드 
+     * @param card   카드
      * @param player 플레이어
      * @param target 타겟
      * @return 카운터 액션
@@ -597,14 +598,14 @@ public class WebGame {
             message = String.format("%s는 %s를 하기 위해 %s를 가지고 있다고 주장한다.", player.getName(), action.name(), card.name());
             if (target != null) {
                 // 타겟이 있는 액션인 경우 타겟을 보여준다.
-                message.concat(String.format("%n목표 : %s", target.getName()));
+                message += String.format("%n목표 : %s", target.getName());
             }
         } else {
             // 카드를 사용하지 않는 액션
             message = String.format("%s는 %s를 하려고 한다.", player.getName(), action.name());
         }
 
-        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);           
+        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);
 
         // 원조만이 모든 플레이어에게 블락당할 수 있다.
         if (action == Action.ForeignAid) {
@@ -643,11 +644,12 @@ public class WebGame {
         }
 
         // 받은 응답들 중에서 패스가 아닌 첫 응답을 찾는다. (모두가 패스했다면 null을 반환한다.)
-        
-        //Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
 
-        CompletableFuture<String> []futureList = futureMap.keySet().toArray(new CompletableFuture[0]);
-        
+        // Future<String> future = getFirst(futureMap.keySet(), s ->
+        // !s.equalsIgnoreCase("pass"));
+
+        CompletableFuture<String>[] futureList = futureMap.keySet().toArray(new CompletableFuture[0]);
+
         CompletableFuture<Void> allFutures = CompletableFuture.allOf(futureList);
 
         allFutures.orTimeout(30, TimeUnit.SECONDS);
@@ -674,16 +676,13 @@ public class WebGame {
             }
         }
 
-
-
-
         // 모든 플레이어에게 선택이 끝났다는걸 전달한다.
         stopChoice();
 
         /*
-        // 완료되지 않은 Future를 모두 취소한다.
-        futureMap.keySet().forEach(f -> f.cancel(true));
-        */
+         * // 완료되지 않은 Future를 모두 취소한다.
+         * futureMap.keySet().forEach(f -> f.cancel(true));
+         */
 
         // 어떤 플레이어가 선택했다면 지금 반환한다.
         if (nonPassResult != null) {
@@ -691,15 +690,14 @@ public class WebGame {
                 String choice = nonPassResult.get();
                 Card c = cardMap.get(choice);
                 return new CounterAction(c != null, futureMap.get(nonPassResult), c);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
+            } catch (ExecutionException e) {
+                logger.error("Future operations error", e);
             }
         }
 
         // 아무 플레이어도 카운터하지 않았다면 null을 반환한다.
         return null;
     }
-
 
     private <T> CompletableFuture<T> getChoiceAsync(Player player, T[] choices, String prompt) {
         return CompletableFuture.supplyAsync(() -> getChoice(player, choices, prompt), executorService);
@@ -716,8 +714,9 @@ public class WebGame {
 
     /**
      * Future 중에서 Predicate가 true인 첫번째 Future를 반환한다.
-     * @param <T> Future의 결과 타입
-     * @param futures Future들
+     * 
+     * @param <T>       Future의 결과 타입
+     * @param futures   Future들
      * @param predicate Predicate
      * @return Predicate가 true인 첫번째 Future
      * @throws InterruptedException
@@ -727,7 +726,7 @@ public class WebGame {
             if (Thread.interrupted()) {
                 throw new InterruptedException();
             }
-            
+
             for (Iterator<Future<T>> iterator = futures.iterator(); iterator.hasNext();) {
                 Future<T> future = iterator.next();
                 // Future가 완료되었으면 결과를 반환한다.
@@ -776,7 +775,7 @@ public class WebGame {
             String message = "";
             message += "당신의 이름: " + userName + " 코인 수: " + coins + "\n";
             message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
-            
+
             for (int i = 0; i < players.length; i++) {
                 message += "Player " + i + " : " + players[i].name + " (" + players[i].coins + " coins, "
                         + players[i].cardNumbers + " cards) ";
@@ -786,7 +785,6 @@ public class WebGame {
         }
     }
 
-    
     /**
      * 플레이어의 상태를 담기 위해 사용하는 클래스
      */
