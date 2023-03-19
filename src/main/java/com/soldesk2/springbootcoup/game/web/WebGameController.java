@@ -4,6 +4,7 @@ import java.security.Principal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,7 @@ public class WebGameController {
 
     public WebGameController() {
         // 로거 설정
-        this.logger.setLevel(Level.DEBUG);
+        this.logger.setLevel(Level.INFO);
     }
 
     @MessageMapping("/chat/{lobbyName}")
@@ -205,6 +206,21 @@ public class WebGameController {
         Principal principal = event.getUser();
         logger.info("유저 {}가 접속 종료함", principal.getName());
         this.connectedUsers.remove(principal);
+    }
+
+    @SendToUser("/lobby")
+    @MessageMapping("/users")
+    public String users() {
+        StringBuilder sb = new StringBuilder();
+        for (Principal p : connectedUsers) {
+            sb.append(p.getName()).append(" 접속한 로비 : ").append( 
+                lobbyList.values().stream().filter(lobby -> lobby.playerNames.contains(p.getName()))
+                                           .map(lobby -> lobby.getName())
+                                           .findFirst().orElse("없음"))
+            .append("\n");
+        }
+
+        return sb.toString();
     }
 }
 
