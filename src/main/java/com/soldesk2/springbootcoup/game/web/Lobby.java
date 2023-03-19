@@ -91,6 +91,8 @@ public class Lobby {
     }
 
     public void endGame() {
+        this.playerNames = null;
+        this.state = State.ENDED;
         if (!Objects.isNull(this.game)) {
             this.game.endGame();
             this.game = null;

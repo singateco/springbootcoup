@@ -182,7 +182,6 @@ public class WebGameController {
             });
 
             if (isAllDisconnected) {
-                lobby.setState(Lobby.State.ENDED);
                 lobby.endGame();
             }
             

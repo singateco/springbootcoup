@@ -154,7 +154,7 @@ public class WebGame {
             playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst()
                     .orElseThrow(IllegalStateException::new));
             
-            this.gameRunning = false;
+            this.endGame();
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -802,6 +802,7 @@ public class WebGame {
     public void endGame() {
         executorService.shutdownNow();
         this.gameRunning = false;
+        this.players = null;
     }
 
 }
