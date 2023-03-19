@@ -44,6 +44,7 @@ public class WebGame {
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     private static final long ACTION_TIMEOUT_SECONDS = 60;
+    private volatile boolean gameRunning = false;
 
     // 게임 시작시 접속한 플레이어들 이름 목록
     String[] playerNames;
@@ -97,12 +98,14 @@ public class WebGame {
             Thread.currentThread().interrupt();
         }
 
+        this.gameRunning = true;
+
         try {
             update();
             int playerIndex = 0;
 
             // 게임이 끝날 때까지 반복
-            while (alivePlayers() > 1) {
+            while (alivePlayers() > 1 && gameRunning) {
                 // 행동할 플레이어를 정한다.
                 Player nowPlayer = players[playerIndex];
                 // 플레이어가 할 액션을 프론트에 요청한다.
@@ -150,6 +153,9 @@ public class WebGame {
             // 남아 있는 플레이어가 승리한다.
             playerWon(Arrays.stream(players).filter(Objects::nonNull).findFirst()
                     .orElseThrow(IllegalStateException::new));
+            
+            this.gameRunning = false;
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -791,6 +797,11 @@ public class WebGame {
             this.coins = player.coins;
             this.cardNumbers = player.getCardNumbers();
         }
+    }
+
+    public void endGame() {
+        executorService.shutdownNow();
+        this.gameRunning = false;
     }
 
 }

@@ -1,11 +1,13 @@
 package com.soldesk2.springbootcoup.game.web;
 
 import java.security.Principal;
-import java.util.List;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -13,7 +15,10 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.socket.messaging.SessionConnectEvent;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import com.google.gson.Gson;
 
@@ -24,6 +29,7 @@ import ch.qos.logback.classic.Logger;
 public class WebGameController {
     private final Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(this.getClass());
     private final HashMap<String, Lobby> lobbyList = new HashMap<>();
+    private final List<Principal> connectedUsers = new ArrayList<>();
 
     @Autowired
     Gson gson;
@@ -163,5 +169,43 @@ public class WebGameController {
         return principal.getName() + ": " + payload;
     }
 
+    @Scheduled(fixedDelay = 15000)
+    void cleanUp() {
+        logger.debug("로비 리스트 정리 시작");
+        for (String lobbyName : lobbyList.keySet()) {
+
+            Lobby lobby = lobbyList.get(lobbyName);
+            List<String> lobbyPlayers = lobby.getPlayerNames();
+
+            boolean isAllDisconnected = lobbyPlayers.stream().allMatch(playerName -> {
+                return connectedUsers.stream().allMatch(user -> !user.getName().equals(playerName));
+            });
+
+            if (isAllDisconnected) {
+                lobby.setState(Lobby.State.ENDED);
+                lobby.endGame();
+            }
+            
+            if (lobby.getState() == Lobby.State.ENDED) {
+                logger.info("로비 {} 삭제", lobbyName);
+                lobbyList.remove(lobbyName);
+            }
+        }
+        logger.debug("로비 리스트 정리 완료");
+    }
+
+    @EventListener
+    public void onConnectEvent(SessionConnectEvent event) {
+        Principal principal = event.getUser();
+        logger.info("유저 {}가 접속함", principal.getName());
+        this.connectedUsers.add(principal);
+    }
+
+    @EventListener
+    public void onDisconnectEvent(SessionDisconnectEvent event) {
+        Principal principal = event.getUser();
+        logger.info("유저 {}가 접속 종료함", principal.getName());
+        this.connectedUsers.remove(principal);
+    }
 }
 

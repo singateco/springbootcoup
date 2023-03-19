@@ -86,8 +86,16 @@ public class Lobby {
         this.state = State.STARTED;
 
         this.game.play(playerNamesArray);
+
+        this.state = State.ENDED;
     }
 
+    public void endGame() {
+        if (!Objects.isNull(this.game)) {
+            this.game.endGame();
+            this.game = null;
+        }
+    }
 
     @Override
     public boolean equals(Object o) {
@@ -116,6 +124,7 @@ public class Lobby {
         EMPTY,
         OPEN,
         FULL,
-        STARTED
+        STARTED,
+        ENDED
     }
 }
