@@ -197,6 +197,7 @@ public class WebGameController {
             if (lobby.getState() == Lobby.State.ENDED) {
                 logger.info("로비 {} 삭제", lobbyName);
                 lobbyList.remove(lobbyName);
+                lobby = null;
             }
         }
         logger.debug("로비 리스트 정리 완료");

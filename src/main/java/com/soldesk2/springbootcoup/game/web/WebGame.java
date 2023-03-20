@@ -19,7 +19,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
 import org.slf4j.LoggerFactory;
@@ -43,7 +42,7 @@ public class WebGame {
 
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
-    private static final long ACTION_TIMEOUT_SECONDS = 60;
+    private static final long ACTION_TIMEOUT_SECONDS = 45;
     private volatile boolean gameRunning = false;
 
     // 게임 시작시 접속한 플레이어들 이름 목록
@@ -478,16 +477,18 @@ public class WebGame {
                             if (s != null) {
                                 return s;
                             }
+                            
+                            Thread.sleep(100);
                         }
                     } catch (Exception e) {
                         logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
                         return null;
                     }
 
-                });
+                }, executorService);
 
         try {
-            String response = futureResponse.get(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            String response = futureResponse.get();
 
             for (int i = 0; i < choices.length; i++) {
                 if (choices[i].toString().equals(response)) {
@@ -496,12 +497,12 @@ public class WebGame {
                 }
             }
 
-        } catch (TimeoutException e) {
-            logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
-            futureResponse.cancel(true);
+        // } catch (TimeoutException e) {
+        //     logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
+        //     futureResponse.cancel(true);
 
-            // 랜덤으로 골라 하나 보냄.
-            return choices[random.nextInt(choices.length)];
+        //     // 랜덤으로 골라 하나 보냄.
+        //     return choices[random.nextInt(choices.length)];
 
         } catch (CancellationException e) {
             logger.info("플레이어 {}로부터 응답을 받는 도중 취소됨.", player.getName(), e);
@@ -607,7 +608,7 @@ public class WebGame {
 
         Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);
 
-        // 원조만이 모든 플레이어에게 블락당할 수 있다.
+        // 원조만이 모든 블락당할 수 있다.
         if (action == Action.ForeignAid) {
             // 플레이어들마다 Future를 받는다.
             for (Player p : players) {
@@ -645,14 +646,9 @@ public class WebGame {
 
         // 받은 응답들 중에서 패스가 아닌 첫 응답을 찾는다. (모두가 패스했다면 null을 반환한다.)
 
-        // Future<String> future = getFirst(futureMap.keySet(), s ->
-        // !s.equalsIgnoreCase("pass"));
+        //Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
 
         CompletableFuture<String>[] futureList = futureMap.keySet().toArray(new CompletableFuture[0]);
-
-        CompletableFuture<Void> allFutures = CompletableFuture.allOf(futureList);
-
-        allFutures.orTimeout(30, TimeUnit.SECONDS);
 
         // Declare a variable to store the first non-pass result
         CompletableFuture<String> nonPassResult = null;
@@ -660,7 +656,7 @@ public class WebGame {
         // Loop through the array and check for non-pass results
         for (CompletableFuture<String> future : futureList) {
             try {
-                String result = future.get(30, TimeUnit.SECONDS);
+                String result = future.get();
 
                 if (!result.equalsIgnoreCase("pass")) {
                     nonPassResult = future;
@@ -671,7 +667,7 @@ public class WebGame {
                     }
                     break;
                 }
-            } catch (ExecutionException | InterruptedException | TimeoutException e) {
+            } catch (ExecutionException | InterruptedException e) {
                 logger.error("Future operations error", e);
             }
         }
@@ -690,8 +686,8 @@ public class WebGame {
                 String choice = nonPassResult.get();
                 Card c = cardMap.get(choice);
                 return new CounterAction(c != null, futureMap.get(nonPassResult), c);
-            } catch (ExecutionException e) {
-                logger.error("Future operations error", e);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
             }
         }
 
@@ -778,7 +774,7 @@ public class WebGame {
 
             for (int i = 0; i < players.length; i++) {
                 message += "Player " + i + " : " + players[i].name;
-                
+
                 if (players[i].name.equals(userName)) {
                     message += " (당신)";
                 }
@@ -807,7 +803,16 @@ public class WebGame {
     }
 
     public void endGame() {
-        executorService.shutdownNow();
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
         this.gameRunning = false;
         this.players = null;
     }
