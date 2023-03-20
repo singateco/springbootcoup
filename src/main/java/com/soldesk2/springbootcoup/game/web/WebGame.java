@@ -67,7 +67,7 @@ public class WebGame {
     public void play(String[] playerNames) {
         this.playerNames = playerNames;
 
-        Message message = new Message(MessageType.UPDATE, "게임 시작", "게임 시작");
+        Message message = new Message(MessageType.START, "게임 시작", "게임 시작");
         sendToAllPlayers(message);
 
         int numberOfPlayers = playerNames.length;
