@@ -95,6 +95,10 @@ public class WebGame {
                 // 행동할 플레이어를 정한다.
                 Player nowPlayer = players[playerIndex];
                 // 플레이어가 할 액션을 프론트에 요청한다.
+                
+                logger.info("플레이어 {}의 턴", nowPlayer.getName());
+                log("플레이어 %s의 턴", nowPlayer.getName());
+                
                 Action action = getAction(nowPlayer);
 
                 logger.debug("Action chosen : {}, Is action targeted? {}", action, action.targeted);
@@ -580,6 +584,10 @@ public class WebGame {
         }
 
         if (action == Action.ForeignAid && !isBlock) {
+            return null;
+        }
+
+        if (isBlock && action.blockedBy.isEmpty()) {
             return null;
         }
 
