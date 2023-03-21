@@ -20,7 +20,7 @@ public class AssignPrincipalHandshakeHandler extends DefaultHandshakeHandler {
     protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler, Map<String, Object> attributes) {
         final String name;
         if (!attributes.containsKey(ATTR_PRINCIPAL)) {
-            name = generateRandomUsername();
+            name = MedievalNameGenerator.getName();
             attributes.put(ATTR_PRINCIPAL, name);
         } else {
             name = (String) attributes.get(ATTR_PRINCIPAL);
