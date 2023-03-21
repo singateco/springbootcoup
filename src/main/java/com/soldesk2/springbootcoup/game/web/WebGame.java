@@ -488,6 +488,10 @@ public class WebGame {
                 logger.error("Error while waiting for player {} to choose.", player, e);
             }
 
+            if (!gameRunning) {
+                return null;
+            }
+
             Map.Entry<String, String> entry = this.actionQueue.poll();
 
             if (entry == null) {
@@ -662,7 +666,7 @@ public class WebGame {
             }
         }
 
-        while (true) {
+        while (gameRunning) {
             Thread.sleep(50);
 
             Map.Entry<String, String> entry = this.actionQueue.poll();
@@ -725,10 +729,10 @@ public class WebGame {
      * 플레이어에게 자신의 카드만 볼 수 있도록 메시지를 담기 위해 사용하는 클래스
      */
     private static class Update {
-        public Card[] localPlayerCards;
-        public PlayerState[] players;
         public String userName;
+        public Card[] localPlayerCards;
         public int coins;
+        public PlayerState[] players;
 
         public Update(Player localPlayer, Player[] players) {
             this.userName = localPlayer.getName();
