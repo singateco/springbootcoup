@@ -513,7 +513,10 @@ public class WebGame {
                 }
             }
 
-            logger.warn("Player {} inputted invalid action {}", playerName, action);
+            logger.info("플레이어 {}가 올바르지 않은 선택지 고름: {}", playerName, action);
+            Message msg = new Message(MessageType.ERROR, choicesString,
+                    "다음 올바르지 않은 선택지를 선택했다: " + action + " 선택지: " + Arrays.toString(choicesString));
+            sendMessage(player, msg);
         }
     }
 
@@ -698,9 +701,9 @@ public class WebGame {
                     }
 
                 } else {
-                    logger.info("Player {} chose invalid choice {}", playerName, choice);
+                    logger.info("플레이어 {}가 올바르지 않은 선택지 고름: {}", playerName, choice);
                     Message msg = new Message(MessageType.ERROR, choicesMap.get(responsePlayer),
-                            "You chose invalid choice :" + choice + " Your choices: " + choicesMap.get(responsePlayer));
+                            "다음 올바르지 않은 선택지를 선택했다:" + choice + " 선택지: " + choicesMap.get(responsePlayer));
                     sendMessage(responsePlayer, msg);
                     continue;
                 }
