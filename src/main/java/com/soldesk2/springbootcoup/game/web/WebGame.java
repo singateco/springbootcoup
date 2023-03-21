@@ -224,69 +224,90 @@ public class WebGame {
      * @throws InterruptedException
      */
     boolean doAction(Action action, Card card, Player player, Player target) throws InterruptedException {
+
         // 돈이 필요한 액션은 돈을 먼저 낸다.
         payCost(action, player);
-        CounterAction counterAction = getCounterAction(action, card, player, target);
+        
+        // 누군가 챌린지 했는지 확인한다.
+        CounterAction counterAction = getCounterAction(action, card, player, target, false);
 
-        // 카운터 액션이 없다면 바로 액션을 실행한다.
+        // 누군가 카운터를 하지 않았으면 블락을 확인한다.
         if (counterAction == null) {
+
+            CounterAction blockCounterAction = getCounterAction(action, card, player, target, true);
+
+            if (blockCounterAction == null) {
+                // 누군가 블락을 하지 않았으면 액션을 실행한다.
+                handleAction(action, player, target);
+                return true;
+            }
+
+            // 누군가 블락을 했다.
+
+            if (action == Action.ForeignAid) {
+                // 블락의 챌린지를 받는다.
+                if (doAction(Action.Block, Card.Duke, blockCounterAction.player, player)) {
+                    log("블록 성공!");
+                    return false;
+                } else {
+                    log("블록 실패!");
+                    handleAction(action, player, target);
+                    return true;
+                }
+
+            } else {
+                log("%s가 %s로 블록함", blockCounterAction.player, blockCounterAction.card);
+
+                // 블락의 챌린지를 받는다.
+                if (doAction(Action.Block, blockCounterAction.card, blockCounterAction.player, player)) {
+                    log("블록 성공!");
+                    return false;
+    
+                } else {
+                    log("블록 실패!");
+                    // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
+                    if (target != null && target.getCardNumbers() == 0) {
+                        return false;
+                    }
+                    
+                    handleAction(action, player, target);
+                    return true;
+                }
+
+            }
+            
+        }
+
+        log("%s가 챌린지한다", counterAction.player);
+
+        boolean lying = !player.hasCard(card);
+
+        if (lying) {
+            log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, player);
+            sacrificeCard(player);
+
+            // 챌린지에 성공해 액션이 실패했으므로 종료
+            return false;
+
+        } else {
+            log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
+            sacrificeCard(counterAction.player);
+
+            // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
+            player.removeCard(card);
+            deck.add(card);
+            shuffleDeck();
+            player.addCard(drawOne());
+
+            // 타겟이 죽었는지 체크
+            if (target.getCardNumbers() == 0) {
+                return false;
+            }
+
+            // 챌린지에 실패해 액션이 성공했으므로 다시 액션을 실행한다.
             handleAction(action, player, target);
             return true;
         }
-
-        // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
-
-        if (action == Action.ForeignAid) {
-            if (doAction(Action.Block, Card.Duke, counterAction.player, player)) {
-                log("블록 성공!");
-                return false;
-            } else {
-                log("블록 실패!");
-            }
-        }
-        // 블록이 가능하다면 블록을 먼저 시도한다.
-        else if (counterAction.isBlock) {
-            log("%s가 %s로 블록함", counterAction.player, counterAction.card);
-
-            // 이 블록도 챌린지될수 있음
-            if (doAction(Action.Block, counterAction.card, counterAction.player, player)) {
-                log("블록 성공!");
-                return false;
-
-            } else {
-                log("블록 실패!");
-                // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
-                if (target != null && target.getCardNumbers() == 0)
-                    return false;
-            }
-
-        } else {
-            log("%s가 챌린지한다", counterAction.player);
-
-            boolean lying = !player.hasCard(card);
-
-            if (lying) {
-                log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, player);
-                sacrificeCard(player);
-
-            } else {
-                log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
-                sacrificeCard(counterAction.player);
-
-                // 플레이어가 거짓말을 하지 않았으므로 카드를 덱에 넣고 섞은 후 다시 뽑는다.
-                player.removeCard(card);
-                deck.add(card);
-                shuffleDeck();
-                player.addCard(drawOne());
-            }
-
-            if (lying || (target != null && target.getCardNumbers() == 0)) {
-                return false;
-            }
-        }
-
-        handleAction(action, player, target);
-        return true;
     }
 
     private void handleAction(Action action, Player player, Player target) throws InterruptedException {
@@ -550,10 +571,15 @@ public class WebGame {
      * @return 카운터 액션
      * @throws InterruptedException
      */
-    CounterAction getCounterAction(Action action, Card card, Player player, Player target) throws InterruptedException {
+    CounterAction getCounterAction(Action action, Card card, Player player, Player target, boolean isBlock)
+            throws InterruptedException {
 
         // 카운터가 불가능한 액션인 경우 null을 반환한다.
         if (action != Action.ForeignAid && card == null) {
+            return null;
+        }
+
+        if (action == Action.ForeignAid && !isBlock) {
             return null;
         }
 
@@ -576,50 +602,52 @@ public class WebGame {
 
         ArrayList<String> choices = new ArrayList<>();
 
-
-        // 원조만이 모든 블락당할 수 있다.
-        if (action == Action.ForeignAid) {
-            // 플레이어들마다 Future를 받는다.
-            for (Player p : players) {
-                // 액션을 수행하는 플레이어는 카운터할 수 없다.
-                if (p != player) {
-                    
-                    choices.add("Block (Duke)");
-                    choices.add("Pass");
-
-                    sendMessage(p, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
-                    choicesMap.put(p, choices);
-                }
-            }
-        } else {
-            // 이 액션을 카운터할 수 있는 카드를 넣는다.
-            for (Card c : action.blockedBy) {
-                String s = String.format("Block (%s)", c);
-                choices.add(s);
-                cardMap.put(s, c);
-            }
+        if (!isBlock) {
+            // 블락이 아니므로 챌린지나 패스만 체크한다.
 
             choices.add("Challenge");
             choices.add("Pass");
 
             for (Player p : players) {
-                if (p != player && p != target) {
-                    // 플레이어가 타겟도 행동을 취하는 플레이어도 아닌 경우 챌린지나 패스를 할 수 있다.
-                    String[] noTargetChoices = { "Challenge", "Pass" };
-                    
-                    sendMessage(p, new Message(MessageType.CHOICE, noTargetChoices, message));
-                    choicesMap.put(p, Arrays.asList(noTargetChoices));
-
-                } else if (p == target) {
-                    // 타겟이면 위에서 넣은 옵션들을 사용한다.
+                // 액션을 수행하는 플레이어는 카운터할 수 없다.
+                if (p != player) {
                     sendMessage(p, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
                     choicesMap.put(p, choices);
                 }
             }
+        } else {
+            // 블락일 경우
+
+            // 원조만이 모두에게 블락당할 수 있다.
+            if (action == Action.ForeignAid) {
+                choices.add("Block (Duke)");
+                choices.add("Pass");
+
+                // 플레이어들마다 Future를 받는다.
+                for (Player p : players) {
+                    // 액션을 수행하는 플레이어는 카운터할 수 없다.
+                    if (p != player) {
+                        sendMessage(p, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
+                        choicesMap.put(p, choices);
+                    }
+                }
+            } else {
+                // 이 액션을 카운터할 수 있는 카드를 넣는다.
+                for (Card c : action.blockedBy) {
+                    String s = String.format("Block (%s)", c);
+                    choices.add(s);
+                    cardMap.put(s, c);
+                }
+
+                // 타겟에게 블락 선택지를 보낸다.
+                sendMessage(target, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
+                choicesMap.put(target, choices);
+            }
         }
 
-        Map<Player, String> chosenMap = new HashMap<>(players.length - 1);
-        
+        // 선택한 선택지를 저장할 맵 생성 (플레이어, 선택지)
+        Map<Player, String> chosenMap = new HashMap<>(players.length - 1); // 액션을 수행하는 플레이어는 제외
+
         for (Player p : players) {
             if (p != player) {
                 chosenMap.put(p, null);
@@ -628,7 +656,7 @@ public class WebGame {
 
         while (true) {
             Thread.sleep(50);
-            
+
             Map.Entry<String, String> entry = this.actionQueue.poll();
 
             if (entry != null) {
@@ -649,7 +677,7 @@ public class WebGame {
 
                 if (choicesMap.get(responsePlayer).contains(choice)) {
                     chosenMap.put(responsePlayer, choice);
-                    
+
                     // Check if it was a choice other than pass
                     if (!choice.equalsIgnoreCase("pass")) {
                         stopChoice();
@@ -659,7 +687,8 @@ public class WebGame {
 
                 } else {
                     logger.info("Player {} chose invalid choice {}", playerName, choice);
-                    Message msg = new Message(MessageType.ERROR, choicesMap.get(responsePlayer), "You chose invalid choice :" + choice + " Your choices: " + choicesMap.get(responsePlayer));
+                    Message msg = new Message(MessageType.ERROR, choicesMap.get(responsePlayer),
+                            "You chose invalid choice :" + choice + " Your choices: " + choicesMap.get(responsePlayer));
                     sendMessage(responsePlayer, msg);
                     continue;
                 }
