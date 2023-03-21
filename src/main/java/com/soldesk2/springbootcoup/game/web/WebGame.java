@@ -1,25 +1,16 @@
 package com.soldesk2.springbootcoup.game.web;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Random;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -38,9 +29,7 @@ public class WebGame {
     private SimpMessagingTemplate simpMessagingTemplate;
 
     private final Random random;
-    public Map<String, Queue<String>> playerActionQueueMap;
-
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
+    public Queue<Map.Entry<String, String>> actionQueue;
 
     private static final long ACTION_TIMEOUT_SECONDS = 45;
     private volatile boolean gameRunning = false;
@@ -57,7 +46,7 @@ public class WebGame {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.random = new Random();
         this.destination = destination;
-        this.playerActionQueueMap = new HashMap<>();
+        this.actionQueue = new ArrayDeque<>();
 
         logger.setLevel(Level.DEBUG);
         logger.debug("게임 생성됨.");
@@ -87,7 +76,6 @@ public class WebGame {
         // 플레이어 설정
         for (int i = 0; i < numberOfPlayers; i++) {
             players[i] = new Player(playerNames[i], drawOne(), drawOne());
-            playerActionQueueMap.put(players[i].getName(), new ConcurrentLinkedQueue<>());
         }
 
         try {
@@ -278,8 +266,9 @@ public class WebGame {
             boolean lying = !player.hasCard(card);
 
             if (lying) {
-                log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, target);
+                log("%s의 챌린지 성공! %s은 카드를 한장 버려야 한다.", counterAction.player, player);
                 sacrificeCard(player);
+
             } else {
                 log("%s의 챌린지 실패! %s은 카드를 한장 버려야 한다.", counterAction.player, counterAction.player);
                 sacrificeCard(counterAction.player);
@@ -465,61 +454,38 @@ public class WebGame {
         Message message = new Message(MessageType.CHOICE, choicesString, prompt);
         sendMessage(player, message);
 
-        CompletableFuture<String> futureResponse = CompletableFuture.supplyAsync(
-                () -> {
-                    try {
-                        while (true) {
-                            if (Thread.interrupted()) {
-                                throw new InterruptedException();
-                            }
+        // 선택지를 선택할 때까지 대기한다.
+        while (true) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.error("Error while waiting for player {} to choose.", player, e);
+            }
 
-                            String s = playerActionQueueMap.get(player.getName()).poll();
-                            if (s != null) {
-                                return s;
-                            }
-                            
-                            Thread.sleep(100);
-                        }
-                    } catch (Exception e) {
-                        logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
-                        return null;
-                    }
+            Map.Entry<String, String> entry = this.actionQueue.poll();
 
-                }, executorService);
+            if (entry == null) {
+                continue;
+            }
 
-        try {
-            String response = futureResponse.get();
+            String playerName = entry.getKey();
+            String action = entry.getValue();
+
+            if (!playerName.equals(player.getName())) {
+                continue;
+            }
+
+            logger.debug("Player {} inputted action {}", playerName, action);
 
             for (int i = 0; i < choices.length; i++) {
-                if (choices[i].toString().equals(response)) {
-                    logger.debug("Choice from player {} is {}", player, choices[i]);
+                if (choices[i].toString().equals(action)) {
                     return choices[i];
                 }
             }
 
-        // } catch (TimeoutException e) {
-        //     logger.warn("플레이어 {}로부터 응답을 받는 도중 시간 초과 발생", player.getName(), e);
-        //     futureResponse.cancel(true);
-
-        //     // 랜덤으로 골라 하나 보냄.
-        //     return choices[random.nextInt(choices.length)];
-
-        } catch (CancellationException e) {
-            logger.info("플레이어 {}로부터 응답을 받는 도중 취소됨.", player.getName(), e);
-            return null;
-        } catch (ExecutionException e) {
-            logger.warn("플레이어 {}로부터 응답을 받는 도중 오류 발생", player.getName(), e);
-            futureResponse.cancel(true);
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.warn("플레이어 {}로부터 응답을 받는 도중 인터럽트 발생", player.getName(), e);
-            futureResponse.cancel(true);
-            return null;
+            logger.warn("Player {} inputted invalid action {}", playerName, action);
         }
-
-        logger.warn("플레이어 {}로부터 옵션들 {}로부터 올바르지 않은 응답을 받음.", player.getName(), choices);
-        return null;
     }
 
     /**
@@ -585,13 +551,15 @@ public class WebGame {
      * @throws InterruptedException
      */
     CounterAction getCounterAction(Action action, Card card, Player player, Player target) throws InterruptedException {
+
         // 카운터가 불가능한 액션인 경우 null을 반환한다.
         if (action != Action.ForeignAid && card == null) {
             return null;
         }
 
-        Map<CompletableFuture<String>, Player> futureMap = new HashMap<>();
+        Map<Player, List<String>> choicesMap = new HashMap<>();
         Map<String, Card> cardMap = new HashMap<>();
+        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);
 
         String message;
         if (card != null) {
@@ -606,7 +574,8 @@ public class WebGame {
             message = String.format("%s는 %s를 하려고 한다.", player.getName(), action.name());
         }
 
-        Player[] players = Arrays.stream(this.players).filter(Objects::nonNull).toArray(Player[]::new);
+        ArrayList<String> choices = new ArrayList<>();
+
 
         // 원조만이 모든 블락당할 수 있다.
         if (action == Action.ForeignAid) {
@@ -614,12 +583,15 @@ public class WebGame {
             for (Player p : players) {
                 // 액션을 수행하는 플레이어는 카운터할 수 없다.
                 if (p != player) {
-                    CompletableFuture<String> f = getChoiceAsync(p, new String[] { "Block (Duke)", "Pass" }, message);
-                    futureMap.put(f, p);
+                    
+                    choices.add("Block (Duke)");
+                    choices.add("Pass");
+
+                    sendMessage(p, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
+                    choicesMap.put(p, choices);
                 }
             }
         } else {
-            List<String> choices = new ArrayList<>();
             // 이 액션을 카운터할 수 있는 카드를 넣는다.
             for (Card c : action.blockedBy) {
                 String s = String.format("Block (%s)", c);
@@ -633,70 +605,74 @@ public class WebGame {
             for (Player p : players) {
                 if (p != player && p != target) {
                     // 플레이어가 타겟도 행동을 취하는 플레이어도 아닌 경우 챌린지나 패스를 할 수 있다.
-                    String[] options = { "Challenge", "Pass" };
-                    CompletableFuture<String> f = getChoiceAsync(p, options, message);
-                    futureMap.put(f, p);
+                    String[] noTargetChoices = { "Challenge", "Pass" };
+                    
+                    sendMessage(p, new Message(MessageType.CHOICE, noTargetChoices, message));
+                    choicesMap.put(p, Arrays.asList(noTargetChoices));
+
                 } else if (p == target) {
                     // 타겟이면 위에서 넣은 옵션들을 사용한다.
-                    CompletableFuture<String> f = getChoiceAsync(p, choices.toArray(new String[0]), message);
-                    futureMap.put(f, p);
+                    sendMessage(p, new Message(MessageType.CHOICE, choices.toArray(new String[0]), message));
+                    choicesMap.put(p, choices);
                 }
             }
         }
 
-        // 받은 응답들 중에서 패스가 아닌 첫 응답을 찾는다. (모두가 패스했다면 null을 반환한다.)
+        Map<Player, String> chosenMap = new HashMap<>(players.length - 1);
+        
+        for (Player p : players) {
+            if (p != player) {
+                chosenMap.put(p, null);
+            }
+        }
 
-        //Future<String> future = getFirst(futureMap.keySet(), s -> !s.equalsIgnoreCase("pass"));
+        while (true) {
+            Thread.sleep(50);
+            
+            Map.Entry<String, String> entry = this.actionQueue.poll();
 
-        CompletableFuture<String>[] futureList = futureMap.keySet().toArray(new CompletableFuture[0]);
+            if (entry != null) {
+                String playerName = entry.getKey();
+                String choice = entry.getValue();
 
-        // Declare a variable to store the first non-pass result
-        CompletableFuture<String> nonPassResult = null;
+                logger.debug("Action queue polled : name {} : choice {}", playerName, choice);
 
-        // Loop through the array and check for non-pass results
-        for (CompletableFuture<String> future : futureList) {
-            try {
-                String result = future.get();
+                Optional<Player> p = Arrays.stream(players).filter(f -> f.getName().equals(playerName)).findFirst();
 
-                if (!result.equalsIgnoreCase("pass")) {
-                    nonPassResult = future;
-                    for (CompletableFuture<String> otherFuture : futureList) {
-                        if (otherFuture != future) {
-                            otherFuture.cancel(true);
-                        }
+                if (!p.isPresent()) {
+                    logger.info("Player {} not found while queue polling", playerName);
+                    continue;
+                }
+
+                Player responsePlayer = p.get();
+                sendMessage(responsePlayer, "Your choice " + choice + " reached the game server");
+
+                if (choicesMap.get(responsePlayer).contains(choice)) {
+                    chosenMap.put(responsePlayer, choice);
+                    
+                    // Check if it was a choice other than pass
+                    if (!choice.equalsIgnoreCase("pass")) {
+                        stopChoice();
+                        Card c = cardMap.get(choice);
+                        return new CounterAction(c != null, responsePlayer, c);
                     }
+
+                } else {
+                    logger.info("Player {} chose invalid choice {}", playerName, choice);
+                    Message msg = new Message(MessageType.ERROR, choicesMap.get(responsePlayer), "You chose invalid choice :" + choice + " Your choices: " + choicesMap.get(responsePlayer));
+                    sendMessage(responsePlayer, msg);
+                    continue;
+                }
+
+                if (chosenMap.values().stream().allMatch(Objects::nonNull)) {
                     break;
                 }
-            } catch (ExecutionException | InterruptedException e) {
-                logger.error("Future operations error", e);
             }
         }
 
         // 모든 플레이어에게 선택이 끝났다는걸 전달한다.
         stopChoice();
-
-        /*
-         * // 완료되지 않은 Future를 모두 취소한다.
-         * futureMap.keySet().forEach(f -> f.cancel(true));
-         */
-
-        // 어떤 플레이어가 선택했다면 지금 반환한다.
-        if (nonPassResult != null) {
-            try {
-                String choice = nonPassResult.get();
-                Card c = cardMap.get(choice);
-                return new CounterAction(c != null, futureMap.get(nonPassResult), c);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        // 아무 플레이어도 카운터하지 않았다면 null을 반환한다.
         return null;
-    }
-
-    private <T> CompletableFuture<T> getChoiceAsync(Player player, T[] choices, String prompt) {
-        return CompletableFuture.supplyAsync(() -> getChoice(player, choices, prompt), executorService);
     }
 
     /**
@@ -706,45 +682,6 @@ public class WebGame {
         String userMessage = "선택이 끝났다.";
         Message message = new Message(MessageType.UPDATE, userMessage, userMessage);
         sendToAllPlayers(message);
-    }
-
-    /**
-     * Future 중에서 Predicate가 true인 첫번째 Future를 반환한다.
-     * 
-     * @param <T>       Future의 결과 타입
-     * @param futures   Future들
-     * @param predicate Predicate
-     * @return Predicate가 true인 첫번째 Future
-     * @throws InterruptedException
-     */
-    <T> Future<T> getFirst(Collection<Future<T>> futures, Predicate<T> predicate) throws InterruptedException {
-        while (!futures.isEmpty()) {
-            if (Thread.interrupted()) {
-                throw new InterruptedException();
-            }
-
-            for (Iterator<Future<T>> iterator = futures.iterator(); iterator.hasNext();) {
-                Future<T> future = iterator.next();
-                // Future가 완료되었으면 결과를 반환한다.
-                if (future.isDone()) {
-                    try {
-                        // Predicate가 true이면 결과를 반환한다.
-                        if (predicate.test(future.get())) {
-                            return future;
-                        } else {
-                            // Predicate가 false이면 Future를 제거한다.
-                            iterator.remove();
-                        }
-                    } catch (ExecutionException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
-            Thread.sleep(100);
-        }
-
-        // 모든 Future가 완료되었지만 Predicate가 true인 결과가 없으면 null을 반환한다.
-        return null;
     }
 
     /**
@@ -803,16 +740,6 @@ public class WebGame {
     }
 
     public void endGame() {
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-
         this.gameRunning = false;
         this.players = null;
     }

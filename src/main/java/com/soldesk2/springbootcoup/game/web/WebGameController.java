@@ -4,7 +4,7 @@ import java.security.Principal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,7 +69,13 @@ public class WebGameController {
         }
 
         Lobby lobby = lobbyList.get(lobbyName);
-        lobby.game.playerActionQueueMap.get(username).add(message);
+        
+        if (lobby.game == null || lobby.getState() != Lobby.State.STARTED) {
+            logger.info("유저 {}가 게임이 시작되지 않은 로비 {} 게임에 메시지 전하려고 함. 메시지: {}", username, lobbyName, message);
+            return "로비명 " + lobbyName + "에는 게임이 시작되지 않았습니다.";
+        }
+
+        lobby.game.actionQueue.add(Map.entry(username, message));
 
         logger.info("로비 {}의 메시지 큐에 유저 {}의 메시지 {} 저장", lobbyName, username, message);
         return "로비명 " + lobbyName + "에 메시지 전송 완료";
