@@ -248,7 +248,9 @@ public class WebGame {
 
         // 카운터 액션이 있다면 카운터 액션을 먼저 실행한다.
 
-        if (action == Action.ForeignAid) {
+        if (counterAction.isBlock && action == Action.ForeignAid) {
+            log("%s가 %s로 블록함", counterAction.player, Card.Duke);
+
             if (doAction(Action.Block, Card.Duke, counterAction.player, player)) {
                 log("블록 성공!");
                 return false;
@@ -614,8 +616,10 @@ public class WebGame {
             for (Player p : players) {
                 // 액션을 수행하는 플레이어는 카운터할 수 없다.
                 if (p != player) {
-                    CompletableFuture<String> f = getChoiceAsync(p, new String[] { "Block (Duke)", "Pass" }, message);
+                    String[] options = { "Block (Duke)", "Pass" };
+                    CompletableFuture<String> f = getChoiceAsync(p, options, message);
                     futureMap.put(f, p);
+                    cardMap.put("Block (Duke)", Card.Duke);
                 }
             }
         } else {
@@ -661,7 +665,7 @@ public class WebGame {
                 if (!result.equalsIgnoreCase("pass")) {
                     nonPassResult = future;
                     for (CompletableFuture<String> otherFuture : futureList) {
-                        if (otherFuture != future) {
+                        if (otherFuture != nonPassResult) {
                             otherFuture.cancel(true);
                         }
                     }
