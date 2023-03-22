@@ -100,6 +100,12 @@ public class WebGame {
                 log("플레이어 %s의 턴", nowPlayer.getName());
 
                 Action action = getAction(nowPlayer);
+                
+                if (action == null) {
+                    logger.error("플레이어 {}에게서 액션 받는 과정에서 에러남", nowPlayer.getName());
+                    log("플레이어 %s에게서 액션 받는 과정에서 에러남", nowPlayer.getName());
+                    break;
+                }
 
                 logger.debug("Action chosen : {}, Is action targeted? {}", action, action.targeted);
 

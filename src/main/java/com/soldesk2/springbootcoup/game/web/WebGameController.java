@@ -16,6 +16,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.socket.messaging.SessionConnectEvent;
@@ -99,13 +100,19 @@ public class WebGameController {
             return "로비명 " + lobbyName + "은 이미 게임이 시작되었습니다.";
         }
 
+        this.startLobbyGame(lobby);
+
+        return null;
+    }
+
+
+    @Async
+    public void startLobbyGame(Lobby lobby) {
         try {
             lobby.startGame();
         } catch (IllegalStateException e) {
-            return "에러 일어남 : " + e.getMessage();
+            logger.error("게임 시작 실패", e);
         }
-
-        return null;
     }
 
     @MessageMapping("/showallgame")
@@ -190,6 +197,7 @@ public class WebGameController {
     }
 
     @Scheduled(fixedDelay = 15000)
+    @Async
     void cleanUp() {
         logger.debug("로비 리스트 정리 시작");
         for (String lobbyName : lobbyList.keySet()) {
