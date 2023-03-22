@@ -126,11 +126,11 @@ public class WebGameController {
 
     @MessageMapping("/create")
     @SendToUser("/lobby")
-    public String createRoom(Principal principal, @Header(defaultValue = "missingHeader") String lobbyName) {
+    public Message createRoom(Principal principal, @Header(defaultValue = "missingHeader") String lobbyName) {
 
         if (lobbyName.equals("missingHeader")) {
             logger.info("유저 {}가 로비명 없이 로비 생성하려함", principal.getName());
-            return "로비명을 입력해주세요.";
+            return new Message(MessageType.ERROR, "로비명을 입력해주세요.", "로비명을 입력해주세요.");
         }
 
         String name = principal.getName();
@@ -144,20 +144,25 @@ public class WebGameController {
             lobbyList.put(lobbyName, newLobby);
 
             logger.info("로비 {} 생성. 현재 로비 리스트: {}", lobbyName, lobbyList);
-            return "로비명 " + lobbyName + " 로비를 생성했다. ";
+            return new Message(MessageType.ACCEPT, lobbyName + " 로비 생성 완료", lobbyName + " 로비 생성 완료");
         }
 
         Lobby lobby = lobbyList.get(lobbyName);
+
+        if (lobby.getState() == Lobby.State.STARTED) {
+            logger.info("유저 {}가 이미 게임이 시작된 로비 {}에 접속하려함", name, lobbyName);
+            return new Message(MessageType.ERROR, lobbyName + "은 이미 게임이 시작된 로비입니다.", lobbyName + "은 이미 게임이 시작된 로비입니다.");
+        }
 
         try {
             lobby.addPlayer(name);
         } catch (IllegalStateException e) {
             logger.error("로비에 유저 추가시 에러 발생 : {}", e.getMessage());
-            return "에러 발생함: " + e.getMessage();
+            return new Message(MessageType.ERROR, "에러 발생 : " + e.getMessage(), "에러 발생 : " + e.getMessage());
         }
 
         logger.info("유저 {}가 로비 {}에 접속함", name, lobbyName);
-        return "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames();
+        return new Message(MessageType.ACCEPT, "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames(), "로비 이름 " + lobbyName + "에 접속 성공. 현재 로비 인원: " + lobby.getPlayerNames());
     }
 
     @MessageMapping("/chat")
