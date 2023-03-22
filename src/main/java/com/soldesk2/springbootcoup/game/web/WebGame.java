@@ -95,10 +95,10 @@ public class WebGame {
                 // 행동할 플레이어를 정한다.
                 Player nowPlayer = players[playerIndex];
                 // 플레이어가 할 액션을 프론트에 요청한다.
-                
+
                 logger.info("플레이어 {}의 턴", nowPlayer.getName());
                 log("플레이어 %s의 턴", nowPlayer.getName());
-                
+
                 Action action = getAction(nowPlayer);
 
                 logger.debug("Action chosen : {}, Is action targeted? {}", action, action.targeted);
@@ -199,7 +199,19 @@ public class WebGame {
      * UI를 업데이트한다.
      */
     void update() {
+        // 살아있는 플레이어들에게 업데이트를 보낸다.
         Arrays.stream(players).forEach(this::updatePlayer);
+
+        // 죽어있는 플레이어들은 따로 업데이트한다.
+        Arrays.stream(playerNames).filter((s) -> Arrays.stream(players).allMatch((p) -> !p.getName().equals(s)))
+                                  .forEach(this::updateDeadPlayer);
+    }
+
+    void updateDeadPlayer(String playerName) {
+        Update update = new Update(players);
+        Message message = new Message(MessageType.UPDATE, update, update.toString());
+
+        sendMessage(playerName, message);
     }
 
     void updatePlayer(Player player) {
@@ -231,7 +243,7 @@ public class WebGame {
 
         // 돈이 필요한 액션은 돈을 먼저 낸다.
         payCost(action, player);
-        
+
         // 누군가 챌린지 했는지 확인한다.
         CounterAction counterAction = getCounterAction(action, card, player, target, false);
 
@@ -266,20 +278,20 @@ public class WebGame {
                 if (doAction(Action.Block, blockCounterAction.card, blockCounterAction.player, player)) {
                     log("블록 성공!");
                     return false;
-    
+
                 } else {
                     log("블록 실패!");
                     // 블록이 챌린지되고 실패했다면 타겟이 죽었을 가능성이 있다.
                     if (target != null && target.getCardNumbers() == 0) {
                         return false;
                     }
-                    
+
                     handleAction(action, player, target);
                     return true;
                 }
 
             }
-            
+
         }
 
         log("%s가 챌린지한다", counterAction.player);
@@ -304,7 +316,9 @@ public class WebGame {
             player.addCard(drawOne());
 
             // 타겟이 죽었는지 체크
-            if (target.getCardNumbers() == 0) {
+            if (target != null && target.getCardNumbers() == 0) {
+                // 타겟이 죽었으므로 행동이 불가능.
+                log("플레이어 %s가 %s를 하려 했으나 대상이 이미 죽었다.", player, action);
                 return false;
             }
 
@@ -537,6 +551,21 @@ public class WebGame {
     }
 
     /**
+     * 사망한 플레이어에게 메시지를 전달한다.
+     * @param playerName 메시지를 전달할 플레이어 이름
+     * @param obj 전달할 메시지
+     */
+    void sendMessage(String playerName, Object obj) {
+        if (obj == null) {
+            logger.warn("플레이어 {}에게 전달할 메시지가 null임.", playerName);
+            return;
+        }
+
+        logger.info("플레이어 {}에게 메시지를 전달함. 메시지: {}", playerName, obj.toString());
+        simpMessagingTemplate.convertAndSendToUser(playerName, destination, obj);
+    }
+
+    /**
      * 덱에서 카드를 한장 뽑는다.
      * 
      * @return 뽑은 카드
@@ -747,11 +776,21 @@ public class WebGame {
                     .toArray(PlayerState[]::new);
         }
 
+        public Update(Player[] players) {
+            this.players = Arrays.stream(players)
+            .filter(Objects::nonNull)
+            .map(PlayerState::new)
+            .toArray(PlayerState[]::new);
+        }
+
         @Override
         public String toString() {
             String message = "";
-            message += "당신의 이름: " + userName + " 코인 수: " + coins + "\n";
-            message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
+
+            if (this.userName != null) {
+                message += "당신의 이름: " + userName + " 코인 수: " + coins + "\n";
+                message += "당신의 카드 : " + Arrays.toString(localPlayerCards) + "\n";
+            }
 
             for (int i = 0; i < players.length; i++) {
                 message += "Player " + i + " : " + players[i].name;
